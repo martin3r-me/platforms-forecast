@@ -51,49 +51,72 @@ class PlanView extends Component
         $level = $this->childLevel($this->container);
         $breadcrumb = $this->breadcrumb();
 
-        // Container-Zusammenfassung (eigener Wert + Rest je Zeile) — nur beim Reinzoomen
-        $summary = [];
-        if ($this->container !== '') {
-            foreach ($rows as $rk => $r) {
-                $summary[$rk] = $r['cells'][$this->container] ?? ['value' => 0, 'rest' => 0];
-            }
+        // Roh-Eingaben je Zeile (für "verbindlich verplant"-Berechnung)
+        $entriesByRow = [];
+        foreach ($plan->entries()->get() as $e) {
+            $entriesByRow[$e->row_key][] = [
+                'key' => $e->bucket_key,
+                'value' => (float) $e->value,
+                'mode' => $e->mode instanceof Mode ? $e->mode : Mode::from((string) $e->mode),
+            ];
         }
 
-        // Scope-Summen je Zeile: Container-Wert (gezoomt) bzw. Summe der Spalten (Wurzel)
-        $scopeTotals = [];
+        // Pro Zeile: Container-Wert (Rest kaskadiert implizit durch leere Ebenen),
+        // "verbindlich verplant" (committed = gepinnte Blatt-Werte + Plus), offener
+        // Rest = Wert − committed, und die gleichmäßige Verteilung auf leere Spalten.
+        $meta = [];
         foreach ($rows as $rk => $r) {
-            if ($this->container !== '') {
-                $scopeTotals[$rk] = $summary[$rk];
-            } else {
-                $v = 0.0;
-                $rest = 0.0;
-                foreach ($columns as $col) {
-                    $c = $r['cells'][$col['bucket']] ?? null;
-                    if ($c) {
-                        $v += $c['value'];
-                        $rest += $c['rest'];
-                    }
-                }
-                $scopeTotals[$rk] = ['value' => $v, 'rest' => $rest];
-            }
-        }
+            $cells = $r['cells'];
+            $rowEntries = $entriesByRow[$rk] ?? [];
 
-        // Verteilung: der Rest des Containers wird gleichmäßig auf die noch leeren
-        // Kind-Spalten gelegt (implizit, nicht gespeichert). So ist beim Reinzoomen
-        // jede Spalte gefüllt und die Summe geht sichtbar auf ("kinderleicht").
-        $spread = [];
-        if ($this->container !== '') {
-            foreach ($rows as $rk => $r) {
-                $rest = $summary[$rk]['rest'] ?? 0;
+            $implied = false;
+            $spread = 0.0;
+
+            if ($this->container === '') {
+                $value = 0.0;
+                foreach ($columns as $col) {
+                    $value += $cells[$col['bucket']]['value'] ?? 0;
+                }
+            } else {
+                $reconciled = $cells[$this->container]['value'] ?? 0;
+                if ($reconciled > 0) {
+                    $value = $reconciled;
+                } else {
+                    $value = $this->impliedInto($plan, $cells, $this->container);
+                    $implied = $value > 0;
+                }
+
+                $storedSum = 0.0;
                 $empty = 0;
                 foreach ($columns as $col) {
-                    $c = $r['cells'][$col['bucket']] ?? null;
-                    if (! $c || (! $c['entered'] && $c['value'] == 0)) {
+                    $cv = $cells[$col['bucket']]['value'] ?? 0;
+                    if ($cv > 0) {
+                        $storedSum += $cv;
+                    } else {
                         $empty++;
                     }
                 }
-                $spread[$rk] = ($rest > 0 && $empty > 0) ? $rest / $empty : 0.0;
+                $distribute = max(0, $value - $storedSum);
+                $spread = ($empty > 0 && $distribute > 0) ? $distribute / $empty : 0.0;
             }
+
+            $committed = $this->committedFor($rowEntries, $this->container);
+            $rest = max(0, $value - $committed);
+
+            // "verbindlich verplant" je sichtbarer Spalte (für konsistente Zell-Reste)
+            $cellCommitted = [];
+            foreach ($columns as $col) {
+                $cellCommitted[$col['bucket']] = $this->committedFor($rowEntries, $col['bucket']);
+            }
+
+            $meta[$rk] = [
+                'value' => $value,
+                'committed' => $committed,
+                'rest' => $rest,
+                'implied' => $implied,
+                'spread' => $spread,
+                'cellCommitted' => $cellCommitted,
+            ];
         }
 
         return view('forecast::livewire.plan-view', [
@@ -103,12 +126,111 @@ class PlanView extends Component
             'level' => $level,
             'levelLabel' => $this->levelLabelDe($level),
             'scopeCaption' => $this->scopeCaption($level),
-            'scopeTotals' => $scopeTotals,
-            'spread' => $spread,
+            'meta' => $meta,
             'breadcrumb' => $breadcrumb,
-            'summary' => $summary,
+            'zoomed' => $this->container !== '',
             'canZoom' => $level !== 'hour',
         ])->layout('platform::layouts.app');
+    }
+
+    /**
+     * Impliziter Wert, der in einen (selbst leeren) Container fließt — der Rest
+     * höherer Ebenen kaskadiert gleichmäßig nach unten, bis er hier ankommt.
+     */
+    protected function impliedInto(ForecastPlan $plan, array $cells, string $container): float
+    {
+        $chain = [];
+        $k = $container;
+        while ($k !== null) {
+            $chain[] = $k;
+            $k = TimeAxis::parentKey($k);
+        }
+        $chain[] = ''; // Wurzel
+        $chain = array_reverse($chain); // ['', Jahr, …, Container]
+
+        $value = null; // null = via gespeicherten Wert
+        for ($i = 0; $i < count($chain) - 1; $i++) {
+            $parent = $chain[$i];
+            $child = $chain[$i + 1];
+
+            $siblings = $parent === '' ? $this->years($plan) : $this->childBuckets($parent, $plan);
+
+            if ($parent === '') {
+                $parentValue = 0.0;
+                foreach ($siblings as $s) {
+                    $parentValue += $cells[$s]['value'] ?? 0;
+                }
+            } else {
+                $parentValue = $value ?? ($cells[$parent]['value'] ?? 0);
+            }
+
+            $storedSum = 0.0;
+            $empty = 0;
+            foreach ($siblings as $s) {
+                $sv = $cells[$s]['value'] ?? 0;
+                if ($sv > 0) {
+                    $storedSum += $sv;
+                } else {
+                    $empty++;
+                }
+            }
+            $distribute = max(0, $parentValue - $storedSum);
+
+            $childReconciled = $cells[$child]['value'] ?? 0;
+            $value = $childReconciled > 0 ? null : (($empty > 0) ? $distribute / $empty : 0.0);
+        }
+
+        return $value ?? ($cells[$container]['value'] ?? 0);
+    }
+
+    /**
+     * "Verbindlich verplant" innerhalb eines Containers: gepinnte Blatt-Detail-Werte
+     * (Detail-Eingaben ohne feinere Eingabe darunter) + alle Plus-Eingaben.
+     *
+     * @param  list<array{key:string, value:float, mode:Mode}>  $rowEntries
+     */
+    protected function committedFor(array $rowEntries, string $container): float
+    {
+        $sum = 0.0;
+        foreach ($rowEntries as $e) {
+            if (! $this->within($e['key'], $container)) {
+                continue;
+            }
+            if ($e['mode'] === Mode::Plus) {
+                $sum += $e['value'];
+                continue;
+            }
+            $leaf = true;
+            foreach ($rowEntries as $e2) {
+                if ($e2['key'] !== $e['key'] && $this->isDescendant($e2['key'], $e['key'])) {
+                    $leaf = false;
+                    break;
+                }
+            }
+            if ($leaf) {
+                $sum += $e['value'];
+            }
+        }
+
+        return $sum;
+    }
+
+    protected function within(string $key, string $container): bool
+    {
+        return $container === '' || $key === $container || $this->isDescendant($key, $container);
+    }
+
+    protected function isDescendant(string $key, string $ancestor): bool
+    {
+        $k = TimeAxis::parentKey($key);
+        while ($k !== null) {
+            if ($k === $ancestor) {
+                return true;
+            }
+            $k = TimeAxis::parentKey($k);
+        }
+
+        return false;
     }
 
     protected function levelLabelDe(string $level): string

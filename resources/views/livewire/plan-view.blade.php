@@ -89,9 +89,8 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                     @foreach($kpiRows as $rowKey => $row)
                         @php
-                            $t = $scopeTotals[$rowKey] ?? ['value' => 0, 'rest' => 0];
-                            $concrete = max(0, $t['value'] - $t['rest']);
-                            $pct = $t['value'] > 0 ? round($concrete / $t['value'] * 100) : 100;
+                            $t = $meta[$rowKey] ?? ['value' => 0, 'rest' => 0, 'committed' => 0];
+                            $pct = $t['value'] > 0 ? round($t['committed'] / $t['value'] * 100) : 100;
                         @endphp
                         <div class="relative overflow-hidden rounded-2xl border border-[var(--ui-border)]/60 bg-[var(--ui-surface)] p-4">
                             <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--ui-primary)]/40 to-transparent"></div>
@@ -99,17 +98,17 @@
                                 <span class="text-xs font-medium text-[var(--ui-muted)] truncate">{{ $row['label'] }}</span>
                                 <span class="text-[10px] uppercase tracking-wider text-[var(--ui-muted)]/70">{{ $row['kind'] }}</span>
                             </div>
-                            <div class="mt-1.5 text-2xl font-semibold tracking-tight text-[var(--ui-secondary)] tabular-nums">{{ $fmt($t['value']) }}</div>
+                            <div class="mt-1.5 text-2xl font-semibold tracking-tight text-[var(--ui-secondary)] tabular-nums">{{ $t['implied'] ? '≈ ' : '' }}{{ $fmt($t['value']) }}</div>
                             <div class="mt-3 h-1.5 rounded-full bg-[var(--ui-muted-10)] overflow-hidden flex">
                                 <div class="h-full bg-[var(--ui-primary)]" style="width: {{ $pct }}%"></div>
                                 <div class="h-full bg-amber-400/70" style="width: {{ 100 - $pct }}%"></div>
                             </div>
                             <div class="mt-1.5 flex items-center justify-between text-[11px]">
-                                <span class="text-[var(--ui-muted)]">{{ $pct }}% konkret</span>
+                                <span class="text-[var(--ui-muted)]">{{ $pct }}% verbindlich</span>
                                 @if($t['rest'] > 0)
-                                    <span class="text-amber-600 font-medium">Rest {{ $fmt($t['rest']) }} offen</span>
+                                    <span class="text-amber-600 font-medium">Rest {{ $fmt($t['rest']) }} verteilt</span>
                                 @else
-                                    <span class="text-emerald-600 font-medium">vollständig</span>
+                                    <span class="text-emerald-600 font-medium">voll verplant</span>
                                 @endif
                             </div>
                         </div>
@@ -136,7 +135,7 @@
                                 <th class="sticky left-0 z-20 bg-[var(--ui-muted-5)] text-left px-4 py-2.5 font-medium text-[11px] uppercase tracking-wider text-[var(--ui-muted)] border-b border-[var(--ui-border)]/60 min-w-[190px]">
                                     Zeile
                                 </th>
-                                @if(!empty($summary))
+                                @if($zoomed)
                                     <th class="bg-[var(--ui-primary)]/[0.04] text-right px-4 py-2.5 border-b border-r border-[var(--ui-border)]/60 whitespace-nowrap min-w-[120px]">
                                         <div class="text-xs font-semibold text-[var(--ui-secondary)]">{{ $breadcrumb[count($breadcrumb)-1]['label'] }}</div>
                                         <div class="text-[10px] font-normal text-[var(--ui-muted)]">Ebene gesamt</div>
@@ -164,20 +163,19 @@
                                         <div class="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]/70">{{ $row['kind'] }}</div>
                                     </td>
 
-                                    @if(!empty($summary))
+                                    @if($zoomed)
                                         @php
-                                            $s = $summary[$rowKey] ?? ['value' => 0, 'rest' => 0];
-                                            $sConcrete = max(0, $s['value'] - $s['rest']);
-                                            $sPct = $s['value'] > 0 ? round($sConcrete / $s['value'] * 100) : 100;
+                                            $s = $meta[$rowKey] ?? ['value' => 0, 'rest' => 0, 'committed' => 0, 'implied' => false];
+                                            $sPct = $s['value'] > 0 ? round($s['committed'] / $s['value'] * 100) : 100;
                                         @endphp
                                         <td class="text-right px-4 py-3 border-b border-r border-[var(--ui-border)]/40 bg-[var(--ui-primary)]/[0.04] align-top">
-                                            <div class="font-semibold text-[var(--ui-secondary)] tabular-nums">{{ $fmt($s['value']) }}</div>
+                                            <div class="font-semibold text-[var(--ui-secondary)] tabular-nums">{{ $s['implied'] ? '≈ ' : '' }}{{ $fmt($s['value']) }}</div>
                                             @if($s['rest'] > 0)
                                                 <div class="mt-1.5 h-1 rounded-full bg-[var(--ui-muted-10)] overflow-hidden flex">
                                                     <div class="h-full bg-[var(--ui-primary)]" style="width: {{ $sPct }}%"></div>
                                                     <div class="h-full bg-amber-400/70" style="width: {{ 100 - $sPct }}%"></div>
                                                 </div>
-                                                <div class="mt-0.5 text-[10px] text-amber-600">Rest {{ $fmt($s['rest']) }}</div>
+                                                <div class="mt-0.5 text-[10px] text-amber-600">Rest {{ $fmt($s['rest']) }} verteilt</div>
                                             @endif
                                         </td>
                                     @endif
@@ -187,9 +185,10 @@
                                         <td class="text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top group-hover/row:bg-[var(--ui-muted-5)]/60 transition-colors">
                                             @if($cell && ($cell['entered'] || $cell['value'] != 0))
                                                 @php
-                                                    $val = $cell['value']; $rest = $cell['rest'];
-                                                    $concrete = max(0, $val - $rest);
-                                                    $pct = $val > 0 ? round($concrete / $val * 100) : 100;
+                                                    $val = $cell['value'];
+                                                    $committed = $meta[$rowKey]['cellCommitted'][$col['bucket']] ?? $val;
+                                                    $rest = max(0, $val - $committed);
+                                                    $pct = $val > 0 ? round($committed / $val * 100) : 100;
                                                 @endphp
                                                 <div class="flex items-center justify-end gap-1.5">
                                                     @if($cell['entered'])
@@ -209,9 +208,9 @@
                                                     <div class="mt-0.5 text-[10px] text-amber-600">Rest {{ $fmt($rest) }}</div>
                                                 @endif
                                             @else
-                                                @php $sp = $spread[$rowKey] ?? 0; @endphp
+                                                @php $sp = $meta[$rowKey]['spread'] ?? 0; @endphp
                                                 @if($sp > 0)
-                                                    <span class="tabular-nums italic text-[var(--ui-muted)]" title="verteilter Rest">≈ {{ $fmt($sp) }}</span>
+                                                    <span class="tabular-nums italic text-[11px] text-[var(--ui-muted)]/55" title="verteilter Rest (nicht verbindlich verplant)">≈&hairsp;{{ $fmt($sp) }}</span>
                                                 @else
                                                     <span class="text-[var(--ui-muted)]/40">·</span>
                                                 @endif

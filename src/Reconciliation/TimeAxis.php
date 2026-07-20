@@ -67,11 +67,15 @@ final class TimeAxis
         if (str_contains($key, 'T')) {
             return substr($key, 0, (int) strpos($key, 'T'));
         }
+        // Quartal "Y-Qn" → Jahr "Y"
+        if (str_contains($key, 'Q')) {
+            return explode('-', $key)[0];
+        }
         $parts = explode('-', $key);
         return match (count($parts)) {
-            3 => $parts[0].'-'.$parts[1], // Tag → Monat
-            2 => $parts[0],               // Monat → Jahr
-            default => null,              // Jahr → Wurzel
+            3 => $parts[0].'-'.$parts[1],                       // Tag → Monat
+            2 => $parts[0].'-Q'.(int) ceil(((int) $parts[1]) / 3), // Monat → Quartal
+            default => null,                                    // Jahr → Wurzel
         };
     }
 }

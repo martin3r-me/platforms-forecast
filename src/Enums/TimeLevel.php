@@ -6,14 +6,16 @@ namespace Platform\Forecast\Enums;
  * Ebene im Zeit-Baum. Wochen bewusst NICHT (nisten nicht sauber).
  *
  * Bucket-Adressen (kanonisch):
- *   Year   "2026"
- *   Month  "2026-07"
- *   Day    "2026-07-12"
- *   Hour   "2026-07-12T14"
+ *   Year    "2026"
+ *   Quarter "2026-Q3"
+ *   Month   "2026-07"
+ *   Day     "2026-07-12"
+ *   Hour    "2026-07-12T14"
  */
 enum TimeLevel: string
 {
     case Year = 'year';
+    case Quarter = 'quarter';
     case Month = 'month';
     case Day = 'day';
     case Hour = 'hour';
@@ -23,6 +25,9 @@ enum TimeLevel: string
     {
         if (str_contains($key, 'T')) {
             return self::Hour;
+        }
+        if (str_contains($key, 'Q')) {
+            return self::Quarter;
         }
         return match (substr_count($key, '-')) {
             0 => self::Year,

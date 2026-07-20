@@ -78,6 +78,24 @@ class PlanView extends Component
             }
         }
 
+        // Verteilung: der Rest des Containers wird gleichmäßig auf die noch leeren
+        // Kind-Spalten gelegt (implizit, nicht gespeichert). So ist beim Reinzoomen
+        // jede Spalte gefüllt und die Summe geht sichtbar auf ("kinderleicht").
+        $spread = [];
+        if ($this->container !== '') {
+            foreach ($rows as $rk => $r) {
+                $rest = $summary[$rk]['rest'] ?? 0;
+                $empty = 0;
+                foreach ($columns as $col) {
+                    $c = $r['cells'][$col['bucket']] ?? null;
+                    if (! $c || (! $c['entered'] && $c['value'] == 0)) {
+                        $empty++;
+                    }
+                }
+                $spread[$rk] = ($rest > 0 && $empty > 0) ? $rest / $empty : 0.0;
+            }
+        }
+
         return view('forecast::livewire.plan-view', [
             'plan' => $plan,
             'rows' => $rows,
@@ -86,6 +104,7 @@ class PlanView extends Component
             'levelLabel' => $this->levelLabelDe($level),
             'scopeCaption' => $this->scopeCaption($level),
             'scopeTotals' => $scopeTotals,
+            'spread' => $spread,
             'breadcrumb' => $breadcrumb,
             'summary' => $summary,
             'canZoom' => $level !== 'hour',
@@ -96,6 +115,7 @@ class PlanView extends Component
     {
         return match ($level) {
             'year' => 'Jahr',
+            'quarter' => 'Quartal',
             'month' => 'Monat',
             'day' => 'Tag',
             'hour' => 'Stunde',
@@ -111,6 +131,7 @@ class PlanView extends Component
         }
 
         $plural = match ($level) {
+            'quarter' => 'Quartale',
             'month' => 'Monate',
             'day' => 'Tage',
             'hour' => 'Stunden',
@@ -138,7 +159,8 @@ class PlanView extends Component
             return 'year';
         }
         return match (TimeLevel::fromKey($container)) {
-            TimeLevel::Year => 'month',
+            TimeLevel::Year => 'quarter',
+            TimeLevel::Quarter => 'month',
             TimeLevel::Month => 'day',
             TimeLevel::Day => 'hour',
             TimeLevel::Hour => 'hour',
@@ -155,7 +177,12 @@ class PlanView extends Component
         $level = TimeLevel::fromKey($container);
 
         if ($level === TimeLevel::Year) {
-            return array_map(fn ($m) => sprintf('%s-%02d', $container, $m), range(1, 12));
+            return array_map(fn ($q) => "{$container}-Q{$q}", range(1, 4));
+        }
+        if ($level === TimeLevel::Quarter) {
+            [$y, $q] = explode('-Q', $container);
+            $start = ((int) $q - 1) * 3 + 1;
+            return array_map(fn ($m) => sprintf('%s-%02d', $y, $m), [$start, $start + 1, $start + 2]);
         }
         if ($level === TimeLevel::Month) {
             [$y, $m] = explode('-', $container);
@@ -215,6 +242,7 @@ class PlanView extends Component
     {
         return match (TimeLevel::fromKey($bucket)) {
             TimeLevel::Year => $bucket,
+            TimeLevel::Quarter => str_replace('-', ' ', $bucket), // "2026-Q3" → "2026 Q3"
             TimeLevel::Month => Carbon::createFromFormat('Y-m', $bucket)->translatedFormat('M Y'),
             TimeLevel::Day => Carbon::createFromFormat('Y-m-d', $bucket)->translatedFormat('D d.'),
             TimeLevel::Hour => substr($bucket, strpos($bucket, 'T') + 1).':00',

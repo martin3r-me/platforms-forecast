@@ -46,7 +46,7 @@
                     {{-- Ebenen-Anzeige --}}
                     <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--ui-muted-5)] border border-[var(--ui-border)]/50">
                         <span class="text-[10px] font-medium uppercase tracking-wider text-[var(--ui-muted)]">Ebene</span>
-                        @foreach(['Jahr','Monat','Tag','Stunde'] as $lvl)
+                        @foreach(['Jahr','Quartal','Monat','Tag','Stunde'] as $lvl)
                             <span class="text-xs font-semibold px-2 py-0.5 rounded-md
                                 {{ $levelLabel === $lvl ? 'bg-[var(--ui-primary)] text-[var(--ui-on-primary)]' : 'text-[var(--ui-muted)]' }}">
                                 {{ $lvl }}
@@ -123,10 +123,9 @@
                 <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-[var(--ui-border)]/50 bg-[var(--ui-muted-5)]">
                     <div class="text-sm font-medium text-[var(--ui-secondary)]">{{ $scopeCaption }}</div>
                     <div class="flex items-center gap-3 text-[11px] text-[var(--ui-muted)]">
-                        <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[var(--ui-primary)]"></span> konkret</span>
-                        <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span> Rest (offen)</span>
-                        <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-emerald-500/15 text-emerald-600">+</span> Plus</span>
-                        <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">D</span> Detail</span>
+                        <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-emerald-500/15 text-emerald-600">+</span> Plus (kommt dazu)</span>
+                        <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-primary)]/15 text-[var(--ui-primary)]">V</span> Verteilen (fixer Wert)</span>
+                        <span class="inline-flex items-center gap-1 italic">≈ verteilter Rest</span>
                     </div>
                 </div>
 
@@ -197,7 +196,7 @@
                                                         @if($cell['mode'] === 'plus')
                                                             <span class="text-[9px] font-bold leading-none px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-600">+</span>
                                                         @else
-                                                            <span class="text-[9px] font-bold leading-none px-1 py-0.5 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">D</span>
+                                                            <span class="text-[9px] font-bold leading-none px-1 py-0.5 rounded bg-[var(--ui-primary)]/15 text-[var(--ui-primary)]">V</span>
                                                         @endif
                                                     @endif
                                                     <span class="tabular-nums {{ $cell['entered'] ? 'font-semibold text-[var(--ui-secondary)]' : 'text-[var(--ui-secondary)]/80' }}">{{ $fmt($val) }}</span>
@@ -210,7 +209,12 @@
                                                     <div class="mt-0.5 text-[10px] text-amber-600">Rest {{ $fmt($rest) }}</div>
                                                 @endif
                                             @else
-                                                <span class="text-[var(--ui-muted)]/40">·</span>
+                                                @php $sp = $spread[$rowKey] ?? 0; @endphp
+                                                @if($sp > 0)
+                                                    <span class="tabular-nums italic text-[var(--ui-muted)]" title="verteilter Rest">≈ {{ $fmt($sp) }}</span>
+                                                @else
+                                                    <span class="text-[var(--ui-muted)]/40">·</span>
+                                                @endif
                                             @endif
                                         </td>
                                     @endforeach

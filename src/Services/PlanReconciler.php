@@ -66,6 +66,7 @@ final class PlanReconciler
                 'agg' => $agg,
                 'sources' => $samePlanKeys,
                 'refPlans' => $refPlans,
+                'sourceCount' => count($samePlanKeys) + count($refPlans),
                 'signMode' => Aggregation::signMode($isFormula, $agg),
                 'aggLabel' => $isFormula ? Aggregation::label($agg) : null,
             ];
@@ -162,7 +163,39 @@ final class PlanReconciler
             $rows[$row->key]['cells'] = $cells;
         }
 
-        return ['plan' => $this->planMeta($plan), 'rows' => $rows, 'rowInfo' => $rowInfo];
+        // Plan-Gesamtwert je Zeile (für die Wurzel-Übersicht): Eingabe = Σ Jahres-Zellen;
+        // Formel = Aggregation über die Gesamtwerte der Quellen (inkl. Cross-Plan, Ratio korrekt).
+        $totals = [];
+        foreach ($resolved as $row) {
+            $k = $row->key;
+            if ($rowInfo[$k]['isFormula']) {
+                $vals = [];
+                $dirs = [];
+                foreach ($row->sources as $src) {
+                    if ($src->source_plan_id === null) {
+                        $t = $totals[$src->source_row_key] ?? 0.0;
+                        $d = $rowInfo[$src->source_row_key]['direction'] ?? 'neutral';
+                    } else {
+                        $rv = $refViews[$src->source_plan_id] ?? null;
+                        $t = $rv['totals'][$src->source_row_key] ?? 0.0;
+                        $d = $rv['rowInfo'][$src->source_row_key]['direction'] ?? 'neutral';
+                    }
+                    $vals[] = $t * (float) $src->weight;
+                    $dirs[] = $d;
+                }
+                $totals[$k] = round(Aggregation::aggregate($rowInfo[$k]['agg'], $vals, $dirs), 4);
+            } else {
+                $sum = 0.0;
+                foreach ($rows[$k]['cells'] as $c) {
+                    if (($c['level'] ?? '') === 'year') {
+                        $sum += $c['value'];
+                    }
+                }
+                $totals[$k] = round($sum, 4);
+            }
+        }
+
+        return ['plan' => $this->planMeta($plan), 'rows' => $rows, 'rowInfo' => $rowInfo, 'totals' => $totals];
     }
 
     private function planMeta(ForecastPlan $plan): array

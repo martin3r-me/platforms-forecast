@@ -128,7 +128,7 @@
                                 {{ $t['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $t['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $t['value'])) }}<span class="text-sm font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span>
                             </div>
                             @if($isF)
-                                <div class="mt-3 text-[11px] text-[var(--ui-muted)]">berechnet aus {{ count($rowInfo[$rowKey]['sources']) }} Zeilen</div>
+                                <div class="mt-3 text-[11px] text-[var(--ui-muted)]">berechnet aus {{ $rowInfo[$rowKey]['sourceCount'] ?? count($rowInfo[$rowKey]['sources']) }} Zeilen</div>
                             @else
                                 <div class="mt-3 h-1.5 rounded-full bg-[var(--ui-muted-10)] overflow-hidden flex">
                                     <div class="h-full bg-[var(--ui-primary)]" style="width: {{ $pct }}%"></div>

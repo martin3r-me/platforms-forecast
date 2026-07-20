@@ -51,6 +51,7 @@ class PlanView extends Component
         $view = (new PlanReconciler())->view($plan);
         $rows = $view['rows'];
         $rowInfo = $view['rowInfo'];
+        $totals = $view['totals'] ?? [];
 
         $columns = $this->columns($plan);
         $level = $this->childLevel($this->container);
@@ -81,10 +82,7 @@ class PlanView extends Component
             $spread = 0.0;
 
             if ($this->container === '') {
-                $value = 0.0;
-                foreach ($columns as $col) {
-                    $value += $cells[$col['bucket']]['value'] ?? 0;
-                }
+                $value = $totals[$rk] ?? 0.0;   // Plan-Gesamtwert (systemseitig)
             } else {
                 $reconciled = $cells[$this->container]['value'] ?? 0;
                 if ($reconciled > 0) {
@@ -150,7 +148,9 @@ class PlanView extends Component
             }
             $formulaCells[$rk] = $cells;
 
-            if (isset($r['cells'][$this->container])) {
+            if ($this->container === '') {
+                $sv = $totals[$rk] ?? 0.0;                       // Plan-Gesamtwert
+            } elseif (isset($r['cells'][$this->container])) {
                 $sv = $r['cells'][$this->container]['value'];
             } else {
                 $sv = Aggregation::aggregate($agg, array_map(fn ($s) => $meta[$s]['value'] ?? 0.0, $sources), $dirs);

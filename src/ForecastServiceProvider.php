@@ -195,12 +195,41 @@ class ForecastServiceProvider extends ServiceProvider
         $this->registerLivewireComponents();
         
         /**
-         * SCHRITT 7: Tools registrieren (optional)
-         * 
-         * Falls dein Modul AI/Chat-Tools hat:
-         * 
-         * $this->registerTools();
+         * SCHRITT 7: MCP-/AI-Tools registrieren
+         *
+         * Macht die Forecast-Tools über den Platform-MCP-Server verfügbar
+         * (tools__GET(module="forecast")).
          */
+        $this->registerTools();
+    }
+
+    /**
+     * Registriert alle Forecast-Tools bei der zentralen ToolRegistry.
+     *
+     * Der Modul-Namespace wird automatisch aus dem ersten Namens-Segment
+     * abgeleitet (forecast.*), daher erscheinen alle Tools unter module="forecast".
+     */
+    protected function registerTools(): void
+    {
+        try {
+            /** @var \Platform\Core\Tools\ToolRegistry $registry */
+            $registry = resolve(\Platform\Core\Tools\ToolRegistry::class);
+
+            $registry->register(new \Platform\Forecast\Tools\CreatePlanTypeTool());
+            $registry->register(new \Platform\Forecast\Tools\ListPlanTypesTool());
+            $registry->register(new \Platform\Forecast\Tools\CreatePlanTool());
+            $registry->register(new \Platform\Forecast\Tools\GetPlanTool());
+            $registry->register(new \Platform\Forecast\Tools\SetCellTool());
+            $registry->register(new \Platform\Forecast\Tools\ClearCellTool());
+            $registry->register(new \Platform\Forecast\Tools\RollupTool());
+            $registry->register(new \Platform\Forecast\Tools\CreateSnapshotTool());
+            $registry->register(new \Platform\Forecast\Tools\ListSnapshotsTool());
+            $registry->register(new \Platform\Forecast\Tools\RestoreSnapshotTool());
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Forecast: Tool-Registrierung fehlgeschlagen', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

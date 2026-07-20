@@ -9,6 +9,7 @@ use Platform\Forecast\Models\ForecastEntry;
 use Platform\Forecast\Models\ForecastPlan;
 use Platform\Forecast\Models\ForecastPlanType;
 use Platform\Forecast\Models\ForecastRow;
+use Platform\Forecast\Models\ForecastRowSource;
 use Platform\Forecast\Models\ForecastSnapshot;
 use Platform\Forecast\Models\ForecastUnit;
 use Platform\Forecast\Reconciliation\Mode;
@@ -35,7 +36,8 @@ final class PlanService
             ]);
 
             foreach (array_values($rows) as $i => $r) {
-                ForecastRow::create($this->rowAttributes($r, $teamId, ['plan_type_id' => $type->id, 'plan_id' => null], $i));
+                $rowModel = ForecastRow::create($this->rowAttributes($r, $teamId, ['plan_type_id' => $type->id, 'plan_id' => null], $i));
+                $this->syncRowSources($rowModel, $r);
             }
 
             return $type;
@@ -63,7 +65,8 @@ final class PlanService
             ]);
 
             foreach (array_values($extraRows) as $i => $r) {
-                ForecastRow::create($this->rowAttributes($r, $teamId, ['plan_type_id' => null, 'plan_id' => $plan->id], $i));
+                $rowModel = ForecastRow::create($this->rowAttributes($r, $teamId, ['plan_type_id' => null, 'plan_id' => $plan->id], $i));
+                $this->syncRowSources($rowModel, $r);
             }
 
             $this->recordChange($plan, $userId, 'plan_create', []);
@@ -181,16 +184,47 @@ final class PlanService
             $unitId = ForecastUnit::resolve((string) $r['unit'], $teamId)?->id;
         }
 
+        $kind = $r['kind'] ?? 'input';
+        $agg = $kind === 'formula' ? ($r['config']['agg'] ?? $r['agg'] ?? 'sum') : null;
+
         return array_merge($parent, [
             'team_id' => $teamId,
             'key' => $r['key'],
             'label' => $r['label'] ?? $r['key'],
-            'kind' => $r['kind'] ?? 'input',
+            'kind' => $kind,
+            'agg' => $agg,
             'unit_id' => $unitId,
             'direction' => $r['direction'] ?? 'neutral',
             'config' => $r['config'] ?? null,
             'order' => $r['order'] ?? $i,
         ]);
+    }
+
+    /**
+     * Legt die Quell-Zeilen (forecast_row_sources) einer Formel-Zeile an.
+     * Quellen: String (selbe Planung) ODER {row_key, plan_id?, weight?} (Verweis).
+     */
+    private function syncRowSources(ForecastRow $row, array $r): void
+    {
+        $sources = $r['config']['sources'] ?? $r['sources'] ?? [];
+        $i = 0;
+        foreach ($sources as $src) {
+            if (is_array($src)) {
+                ForecastRowSource::create([
+                    'row_id' => $row->id,
+                    'source_plan_id' => $src['plan_id'] ?? null,
+                    'source_row_key' => $src['row_key'] ?? $src['key'] ?? '',
+                    'weight' => $src['weight'] ?? 1,
+                    'sort_order' => $i++,
+                ]);
+            } else {
+                ForecastRowSource::create([
+                    'row_id' => $row->id,
+                    'source_row_key' => (string) $src,
+                    'sort_order' => $i++,
+                ]);
+            }
+        }
     }
 
     private function recordChange(ForecastPlan $plan, ?int $userId, string $op, array $data): ForecastChange

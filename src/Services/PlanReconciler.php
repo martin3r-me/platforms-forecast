@@ -28,16 +28,15 @@ final class PlanReconciler
         // Zeilen-Metainfo (Richtung, Einheit, Formel)
         $rowInfo = [];
         foreach ($resolved as $row) {
-            $cfg = $row->config ?? [];
             $isFormula = ($row->kind === RowKind::Formula);
-            $agg = $cfg['agg'] ?? 'sum';
+            $agg = $row->aggFn();
             $dir = $row->direction instanceof Direction ? $row->direction->value : ($row->direction ?? 'neutral');
             $rowInfo[$row->key] = [
                 'isFormula' => $isFormula,
                 'direction' => $dir,
                 'unit' => $row->unit?->symbol,
                 'agg' => $agg,
-                'sources' => $cfg['sources'] ?? [],
+                'sources' => $isFormula ? $row->sourceKeys() : [],
                 'signMode' => Aggregation::signMode($isFormula, $agg),
                 'aggLabel' => $isFormula ? Aggregation::label($agg) : null,
             ];

@@ -19,7 +19,7 @@ class ForecastRow extends Model
 
     protected $fillable = [
         'uuid', 'team_id', 'plan_type_id', 'plan_id',
-        'key', 'label', 'kind', 'unit_id', 'direction', 'config', 'order',
+        'key', 'label', 'kind', 'agg', 'unit_id', 'direction', 'config', 'order',
     ];
 
     protected $casts = [
@@ -32,6 +32,29 @@ class ForecastRow extends Model
     public function unit()
     {
         return $this->belongsTo(ForecastUnit::class, 'unit_id');
+    }
+
+    public function sources()
+    {
+        return $this->hasMany(ForecastRowSource::class, 'row_id')->orderBy('sort_order');
+    }
+
+    /** Aggregations-Funktion: strukturierte Spalte, sonst Legacy-config. */
+    public function aggFn(): string
+    {
+        return $this->agg ?? ($this->config['agg'] ?? 'sum');
+    }
+
+    /**
+     * Quell-Zeilen-Schlüssel: strukturierte Relation, sonst Legacy-config.
+     *
+     * @return list<string>
+     */
+    public function sourceKeys(): array
+    {
+        $structured = $this->sources->pluck('source_row_key')->all();
+
+        return $structured ?: (array) ($this->config['sources'] ?? []);
     }
 
     protected static function booted(): void

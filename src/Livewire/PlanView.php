@@ -51,11 +51,30 @@ class PlanView extends Component
         $level = $this->childLevel($this->container);
         $breadcrumb = $this->breadcrumb();
 
-        // Container-Zusammenfassung (eigener Wert + Rest je Zeile)
+        // Container-Zusammenfassung (eigener Wert + Rest je Zeile) — nur beim Reinzoomen
         $summary = [];
         if ($this->container !== '') {
             foreach ($rows as $rk => $r) {
                 $summary[$rk] = $r['cells'][$this->container] ?? ['value' => 0, 'rest' => 0];
+            }
+        }
+
+        // Scope-Summen je Zeile: Container-Wert (gezoomt) bzw. Summe der Spalten (Wurzel)
+        $scopeTotals = [];
+        foreach ($rows as $rk => $r) {
+            if ($this->container !== '') {
+                $scopeTotals[$rk] = $summary[$rk];
+            } else {
+                $v = 0.0;
+                $rest = 0.0;
+                foreach ($columns as $col) {
+                    $c = $r['cells'][$col['bucket']] ?? null;
+                    if ($c) {
+                        $v += $c['value'];
+                        $rest += $c['rest'];
+                    }
+                }
+                $scopeTotals[$rk] = ['value' => $v, 'rest' => $rest];
             }
         }
 
@@ -64,10 +83,42 @@ class PlanView extends Component
             'rows' => $rows,
             'columns' => $columns,
             'level' => $level,
+            'levelLabel' => $this->levelLabelDe($level),
+            'scopeCaption' => $this->scopeCaption($level),
+            'scopeTotals' => $scopeTotals,
             'breadcrumb' => $breadcrumb,
             'summary' => $summary,
             'canZoom' => $level !== 'hour',
         ])->layout('platform::layouts.app');
+    }
+
+    protected function levelLabelDe(string $level): string
+    {
+        return match ($level) {
+            'year' => 'Jahr',
+            'month' => 'Monat',
+            'day' => 'Tag',
+            'hour' => 'Stunde',
+            default => ucfirst($level),
+        };
+    }
+
+    /** Beantwortet "was siehst du gerade". */
+    protected function scopeCaption(string $level): string
+    {
+        if ($this->container === '') {
+            return 'Jahresübersicht';
+        }
+
+        $plural = match ($level) {
+            'month' => 'Monate',
+            'day' => 'Tage',
+            'hour' => 'Stunden',
+            default => $level,
+        };
+        $prep = $level === 'hour' ? 'am' : 'in';
+
+        return "{$plural} {$prep} {$this->label($this->container)}";
     }
 
     /** @return list<array{bucket:string,label:string}> */

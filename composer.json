@@ -1,0 +1,27 @@
+{
+    "name": "martin3r/platforms-forecast",
+    "description": "Forecast Module for Platform — abstract, numbers-driven planning and scenario modeling.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Platform Team",
+            "email": "team@platform.com"
+        }
+    ],
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Platform\\Forecast\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Platform\\Forecast\\ForecastServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

@@ -9,6 +9,7 @@ use Platform\Forecast\Enums\Direction;
 use Platform\Forecast\Enums\RowKind;
 use Platform\Forecast\Enums\TimeLevel;
 use Platform\Forecast\Models\ForecastPlan;
+use Platform\Forecast\Reconciliation\Mode;
 use Platform\Forecast\Reconciliation\TimeAxis;
 use Platform\Forecast\Services\PlanReconciler;
 

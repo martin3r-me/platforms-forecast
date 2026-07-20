@@ -203,6 +203,14 @@
                                         <div class="flex items-center gap-1.5">
                                             @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span>@endif
                                             <span class="font-medium text-[var(--ui-secondary)]">{{ $row['label'] }}</span>
+                                            @php $refPlans = $rowInfo[$rowKey]['refPlans'] ?? []; @endphp
+                                            @if(!empty($refPlans) && ($refPlans[0]['uuid'] ?? null))
+                                                <a href="{{ route('forecast.plans.show', ['uuid' => $refPlans[0]['uuid']]) }}" wire:navigate
+                                                   class="inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--ui-primary)] hover:underline px-1 py-0.5 rounded hover:bg-[var(--ui-primary)]/10"
+                                                   title="Detailplan öffnen: {{ $refPlans[0]['name'] }}{{ count($refPlans) > 1 ? ' (+'.(count($refPlans)-1).' weitere)' : '' }}">
+                                                    @svg('heroicon-o-arrow-top-right-on-square','w-3 h-3') Detail
+                                                </a>
+                                            @endif
                                         </div>
                                         <div class="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]/70">
                                             @if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else{{ $rowInfo[$rowKey]['direction'] === 'income' ? 'Ertrag +' : ($rowInfo[$rowKey]['direction'] === 'expense' ? 'Aufwand −' : 'Messgröße') }}@endif

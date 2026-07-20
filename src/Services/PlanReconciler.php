@@ -12,8 +12,8 @@ use Platform\Forecast\Reconciliation\TimeAxis;
 
 /**
  * Systemseitiger Rechenweg einer Planung: reconciled Eingabe-Zeilen (Plus/Detail/
- * Rest über den Zeit-Motor) UND berechnete Formel-Zeilen (Aggregation über andere
- * Zeilen je Bucket). Diese Sicht nutzen UI, MCP und Exporte gleichermaßen.
+ * Rest über den Zeit-Motor) UND berechnete Formel-/Verweis-Zeilen — inkl. Quellen
+ * aus ANDEREN Planungen (Konsolidierung / Drill-down). Genutzt von UI, MCP, Exporten.
  */
 final class PlanReconciler
 {
@@ -22,27 +22,56 @@ final class PlanReconciler
      */
     public function view(ForecastPlan $plan): array
     {
+        return $this->compute($plan, []);
+    }
+
+    /**
+     * @param  list<int>  $visiting  Zyklus-Schutz (Plan-IDs im aktuellen Pfad)
+     */
+    private function compute(ForecastPlan $plan, array $visiting): array
+    {
+        if (in_array($plan->id, $visiting, true)) {
+            return ['plan' => $this->planMeta($plan), 'rows' => [], 'rowInfo' => []];
+        }
+        $visiting[] = $plan->id;
+
         $byRow = $this->entriesByRow($plan);
         $resolved = $plan->resolvedRows();
 
-        // Zeilen-Metainfo (Richtung, Einheit, Formel)
+        // Zeilen-Metainfo + Quell-Referenzen sammeln
         $rowInfo = [];
+        $refPlanIds = [];
         foreach ($resolved as $row) {
             $isFormula = ($row->kind === RowKind::Formula);
             $agg = $row->aggFn();
             $dir = $row->direction instanceof Direction ? $row->direction->value : ($row->direction ?? 'neutral');
+
+            $samePlanKeys = [];
+            $refPlans = [];
+            if ($isFormula) {
+                foreach ($row->sources as $src) {
+                    if ($src->source_plan_id === null) {
+                        $samePlanKeys[] = $src->source_row_key;
+                    } else {
+                        $refPlanIds[$src->source_plan_id] = true;
+                        $refPlans[] = ['plan_id' => (int) $src->source_plan_id, 'row_key' => $src->source_row_key];
+                    }
+                }
+            }
+
             $rowInfo[$row->key] = [
                 'isFormula' => $isFormula,
                 'direction' => $dir,
                 'unit' => $row->unit?->symbol,
                 'agg' => $agg,
-                'sources' => $isFormula ? $row->sourceKeys() : [],
+                'sources' => $samePlanKeys,
+                'refPlans' => $refPlans,
                 'signMode' => Aggregation::signMode($isFormula, $agg),
                 'aggLabel' => $isFormula ? Aggregation::label($agg) : null,
             ];
         }
 
-        // Eingabe-Zeilen reconcilen (Formel-Zeilen zunächst leer)
+        // Eingabe-Zeilen reconcilen
         $rows = [];
         foreach ($resolved as $row) {
             if ($rowInfo[$row->key]['isFormula']) {
@@ -71,26 +100,55 @@ final class PlanReconciler
             $rows[$row->key] = ['label' => $row->label, 'kind' => $row->kind->value, 'cells' => $cells];
         }
 
-        // Formel-Zeilen berechnen (in Reihenfolge; Formel-auf-Formel möglich)
+        // Referenzierte Pläne rekursiv berechnen (mit Cache über $refViews)
+        $refViews = [];
+        foreach (array_keys($refPlanIds) as $pid) {
+            $refPlan = ForecastPlan::find($pid);
+            $refViews[$pid] = $refPlan ? $this->compute($refPlan, $visiting) : ['plan' => [], 'rows' => [], 'rowInfo' => []];
+        }
+
+        // rowInfo.refPlans mit uuid/name anreichern (für UI-Drill-down)
+        foreach ($rowInfo as &$info) {
+            foreach ($info['refPlans'] as &$rp) {
+                $rv = $refViews[$rp['plan_id']] ?? null;
+                $rp['uuid'] = $rv['plan']['uuid'] ?? null;
+                $rp['name'] = $rv['plan']['name'] ?? ('Plan #'.$rp['plan_id']);
+            }
+            unset($rp);
+        }
+        unset($info);
+
+        // Formel-/Verweis-Zeilen berechnen (Quellen: selbe Planung ODER anderer Plan)
         foreach ($resolved as $row) {
             if (! $rowInfo[$row->key]['isFormula']) {
                 continue;
             }
-            $sources = $rowInfo[$row->key]['sources'];
-            $agg = $rowInfo[$row->key]['agg'];
-            $dirs = array_map(fn ($s) => $rowInfo[$s]['direction'] ?? 'neutral', $sources);
 
-            // Vereinigung der Buckets aller Quellen
+            $sources = [];
+            foreach ($row->sources as $src) {
+                if ($src->source_plan_id === null) {
+                    $cells = $rows[$src->source_row_key]['cells'] ?? [];
+                    $sdir = $rowInfo[$src->source_row_key]['direction'] ?? 'neutral';
+                } else {
+                    $rv = $refViews[$src->source_plan_id] ?? null;
+                    $cells = $rv['rows'][$src->source_row_key]['cells'] ?? [];
+                    $sdir = $rv['rowInfo'][$src->source_row_key]['direction'] ?? 'neutral';
+                }
+                $sources[] = ['cells' => $cells, 'dir' => $sdir, 'weight' => (float) $src->weight];
+            }
+
             $buckets = [];
             foreach ($sources as $s) {
-                foreach (array_keys($rows[$s]['cells'] ?? []) as $b) {
+                foreach (array_keys($s['cells']) as $b) {
                     $buckets[$b] = true;
                 }
             }
 
+            $agg = $rowInfo[$row->key]['agg'];
             $cells = [];
             foreach (array_keys($buckets) as $b) {
-                $vals = array_map(fn ($s) => $rows[$s]['cells'][$b]['value'] ?? 0.0, $sources);
+                $vals = array_map(fn ($s) => ($s['cells'][$b]['value'] ?? 0.0) * $s['weight'], $sources);
+                $dirs = array_map(fn ($s) => $s['dir'], $sources);
                 $cells[$b] = [
                     'level'   => TimeLevel::fromKey($b)->value,
                     'entered' => false,
@@ -104,16 +162,17 @@ final class PlanReconciler
             $rows[$row->key]['cells'] = $cells;
         }
 
+        return ['plan' => $this->planMeta($plan), 'rows' => $rows, 'rowInfo' => $rowInfo];
+    }
+
+    private function planMeta(ForecastPlan $plan): array
+    {
         return [
-            'plan' => [
-                'uuid'                   => $plan->uuid,
-                'name'                   => $plan->name,
-                'version'                => $plan->current_version,
-                'organization_entity_id' => $plan->organization_entity_id,
-                'org_mode'               => $plan->org_mode?->value,
-            ],
-            'rows' => $rows,
-            'rowInfo' => $rowInfo,
+            'uuid'                   => $plan->uuid,
+            'name'                   => $plan->name,
+            'version'                => $plan->current_version,
+            'organization_entity_id' => $plan->organization_entity_id,
+            'org_mode'               => $plan->org_mode?->value,
         ];
     }
 

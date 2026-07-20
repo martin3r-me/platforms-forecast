@@ -5,12 +5,13 @@ namespace Platform\Forecast\Livewire;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
-use Platform\Forecast\Enums\Direction;
-use Platform\Forecast\Enums\RowKind;
 use Platform\Forecast\Enums\TimeLevel;
+use Platform\Forecast\Models\ForecastLockPolicy;
 use Platform\Forecast\Models\ForecastPlan;
 use Platform\Forecast\Reconciliation\Mode;
 use Platform\Forecast\Reconciliation\TimeAxis;
+use Platform\Forecast\Services\Aggregation;
+use Platform\Forecast\Services\LockService;
 use Platform\Forecast\Services\PlanReconciler;
 
 /**
@@ -49,6 +50,7 @@ class PlanView extends Component
         $plan = $this->plan();
         $view = (new PlanReconciler())->view($plan);
         $rows = $view['rows'];
+        $rowInfo = $view['rowInfo'];
 
         $columns = $this->columns($plan);
         $level = $this->childLevel($this->container);
@@ -69,6 +71,9 @@ class PlanView extends Component
         // Rest = Wert − committed, und die gleichmäßige Verteilung auf leere Spalten.
         $meta = [];
         foreach ($rows as $rk => $r) {
+            if ($rowInfo[$rk]['isFormula']) {
+                continue; // Formel-Meta unten
+            }
             $cells = $r['cells'];
             $rowEntries = $entriesByRow[$rk] ?? [];
 
@@ -122,27 +127,8 @@ class PlanView extends Component
             ];
         }
 
-        // Zeilen-Metainfo (Richtung, Einheit, Formel)
-        $rowModels = $plan->resolvedRows()->keyBy('key');
-        $rowInfo = [];
-        foreach ($rows as $rk => $r) {
-            $m = $rowModels->get($rk);
-            $cfg = $m?->config ?? [];
-            $isFormula = ($m?->kind === RowKind::Formula);
-            $agg = $cfg['agg'] ?? 'sum';
-            $dir = $m?->direction instanceof Direction ? $m->direction->value : ($m?->direction ?? 'neutral');
-            $rowInfo[$rk] = [
-                'isFormula' => $isFormula,
-                'direction' => $dir,
-                'unit' => $m?->unit?->symbol,
-                'agg' => $agg,
-                'sources' => $cfg['sources'] ?? [],
-                'signMode' => ($isFormula && in_array($agg, ['net', 'ratio'], true)) ? 'net' : 'direction',
-                'aggLabel' => $isFormula ? $this->aggLabel($agg) : null,
-            ];
-        }
-
-        // Formula-Zeilen berechnen (read-only, aggregieren andere Zeilen je Bucket)
+        // Formel-Zeilen: systemseitig berechnete Werte (aus PlanReconciler); leere
+        // Anzeige-Spalten über den verteilten Rest der Quellen (gleiche Aggregation).
         $formulaCells = [];
         foreach ($rows as $rk => $r) {
             if (! $rowInfo[$rk]['isFormula']) {
@@ -154,21 +140,26 @@ class PlanView extends Component
 
             $cells = [];
             foreach ($columns as $col) {
-                $vals = array_map(fn ($s) => $this->displayVal($s, $col['bucket'], $rows, $meta, $formulaCells), $sources);
-                $cells[$col['bucket']] = $this->aggregate($agg, $vals, $dirs);
+                $b = $col['bucket'];
+                if (isset($r['cells'][$b])) {
+                    $cells[$b] = $r['cells'][$b]['value'];                      // systemseitig reconciled
+                } else {
+                    $vals = array_map(fn ($s) => $meta[$s]['spread'] ?? 0.0, $sources);
+                    $cells[$b] = Aggregation::aggregate($agg, $vals, $dirs);    // verteilter Rest
+                }
             }
             $formulaCells[$rk] = $cells;
 
-            $svals = array_map(fn ($s) => $meta[$s]['value'] ?? 0, $sources);
-            $summary = $this->aggregate($agg, $svals, $dirs);
-            $meta[$rk] = [
-                'value' => $summary, 'committed' => $summary, 'rest' => 0.0,
-                'implied' => false, 'spread' => 0.0, 'cellCommitted' => [],
-            ];
+            if (isset($r['cells'][$this->container])) {
+                $sv = $r['cells'][$this->container]['value'];
+            } else {
+                $sv = Aggregation::aggregate($agg, array_map(fn ($s) => $meta[$s]['value'] ?? 0.0, $sources), $dirs);
+            }
+            $meta[$rk] = ['value' => $sv, 'committed' => $sv, 'rest' => 0.0, 'implied' => false, 'spread' => 0.0, 'cellCommitted' => []];
         }
 
         // Zeit-Sperre aus entkoppelter Policy (Plan-Policy → Team-Default → Legacy → Code-Default)
-        $policy = $plan->lockPolicy ?? \Platform\Forecast\Models\ForecastLockPolicy::resolveDefault($plan->team_id);
+        $policy = $plan->lockPolicy ?? ForecastLockPolicy::resolveDefault($plan->team_id);
         $lock = array_merge(
             ['period_level' => 'month', 'lead_days' => 40, 'grace_days' => 10],
             $policy ? $policy->toRule() : [],
@@ -178,7 +169,7 @@ class PlanView extends Component
         $now = now();
         $colStatus = [];
         foreach ($columns as $col) {
-            $colStatus[$col['bucket']] = $this->lockStatus($col['bucket'], $lock, $now);
+            $colStatus[$col['bucket']] = LockService::status($col['bucket'], $lock, $now);
         }
 
         return view('forecast::livewire.plan-view', [
@@ -197,137 +188,6 @@ class PlanView extends Component
             'lock' => $lock,
             'colStatus' => $colStatus,
         ])->layout('platform::layouts.app');
-    }
-
-    /**
-     * Sperr-Status eines Zeit-Buckets. Der Status wird auf der Perioden-Ebene
-     * (config, default Monat) entschieden; feinere Buckets erben ihn (Kaskade),
-     * gröbere (Jahr/Quartal) sind "gemischt".
-     *
-     * @return array{state:string, days:?int}
-     */
-    protected function lockStatus(string $bucket, array $lock, \Illuminate\Support\Carbon $now): array
-    {
-        $periodRank = $this->levelRank((string) $lock['period_level']);
-        $colRank = $this->levelRank(TimeLevel::fromKey($bucket)->value);
-
-        if ($colRank < $periodRank) {
-            return ['state' => 'mixed', 'days' => null];
-        }
-
-        $governing = $this->governingBucket($bucket, $periodRank);
-        [$start, $end] = $this->bucketRange($governing);
-        $opensAt = $start->copy()->subDays((int) $lock['lead_days']);
-        $closesAt = $end->copy()->addDays((int) $lock['grace_days']);
-
-        if ($now->gt($closesAt)) {
-            return ['state' => 'closed', 'days' => null];
-        }
-        if ($now->lt($opensAt)) {
-            return ['state' => 'pending', 'days' => (int) ceil(($opensAt->timestamp - $now->timestamp) / 86400)];
-        }
-        return ['state' => 'open', 'days' => (int) ceil(($closesAt->timestamp - $now->timestamp) / 86400)];
-    }
-
-    protected function levelRank(string $level): int
-    {
-        return ['year' => 0, 'quarter' => 1, 'month' => 2, 'day' => 3, 'hour' => 4][$level] ?? 2;
-    }
-
-    /** Nächst-höherer Bucket auf der Perioden-Ebene (für die Kaskade nach unten). */
-    protected function governingBucket(string $bucket, int $periodRank): string
-    {
-        $k = $bucket;
-        while ($k !== null && $this->levelRank(TimeLevel::fromKey($k)->value) > $periodRank) {
-            $k = TimeAxis::parentKey($k);
-        }
-
-        return $k ?? $bucket;
-    }
-
-    /** @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon} */
-    protected function bucketRange(string $bucket): array
-    {
-        return match (TimeLevel::fromKey($bucket)) {
-            TimeLevel::Year => [Carbon::create((int) $bucket, 1, 1)->startOfYear(), Carbon::create((int) $bucket, 1, 1)->endOfYear()],
-            TimeLevel::Quarter => (function () use ($bucket) {
-                [$y, $q] = explode('-Q', $bucket);
-                $s = Carbon::create((int) $y, ((int) $q - 1) * 3 + 1, 1)->startOfMonth();
-                return [$s, $s->copy()->addMonths(2)->endOfMonth()];
-            })(),
-            TimeLevel::Month => [Carbon::createFromFormat('Y-m', $bucket)->startOfMonth(), Carbon::createFromFormat('Y-m', $bucket)->endOfMonth()],
-            TimeLevel::Day => [Carbon::createFromFormat('Y-m-d', $bucket)->startOfDay(), Carbon::createFromFormat('Y-m-d', $bucket)->endOfDay()],
-            TimeLevel::Hour => (function () use ($bucket) {
-                $day = substr($bucket, 0, (int) strpos($bucket, 'T'));
-                $h = (int) substr($bucket, (int) strpos($bucket, 'T') + 1);
-                $s = Carbon::createFromFormat('Y-m-d', $day)->startOfDay()->addHours($h);
-                return [$s, $s->copy()->endOfHour()];
-            })(),
-        };
-    }
-
-    /** Angezeigter Wert einer Quell-Zeile an einem Bucket (belegt oder ≈ verteilt). */
-    protected function displayVal(string $src, string $bucket, array $rows, array $meta, array $formulaCells): float
-    {
-        if (isset($formulaCells[$src])) {
-            return $formulaCells[$src][$bucket] ?? 0.0;
-        }
-        $v = $rows[$src]['cells'][$bucket]['value'] ?? 0;
-        return $v > 0 ? $v : ($meta[$src]['spread'] ?? 0.0);
-    }
-
-    /**
-     * Generische Aggregation über andere Zellen.
-     *
-     * @param  list<float>   $vals
-     * @param  list<string>  $dirs  Richtungen der Quellen (für "net")
-     */
-    protected function aggregate(string $fn, array $vals, array $dirs = []): float
-    {
-        if (empty($vals)) {
-            return 0.0;
-        }
-        return match ($fn) {
-            'net' => array_sum(array_map(
-                fn ($v, $d) => $d === 'expense' ? -$v : ($d === 'neutral' ? 0 : $v),
-                $vals,
-                $dirs + array_fill(0, count($vals), 'income'),
-            )),
-            // ratio = sources[0] / sources[1] * 100 (in %); Division durch 0 → 0
-            'ratio' => (($vals[1] ?? 0) != 0) ? ($vals[0] ?? 0) / $vals[1] * 100 : 0.0,
-            'avg' => array_sum($vals) / count($vals),
-            'median' => $this->median($vals),
-            'min' => min($vals),
-            'max' => max($vals),
-            'count' => (float) count(array_filter($vals, fn ($v) => $v != 0)),
-            'product' => array_product($vals),
-            default => array_sum($vals), // sum
-        };
-    }
-
-    /** @param list<float> $vals */
-    protected function median(array $vals): float
-    {
-        sort($vals);
-        $n = count($vals);
-        $mid = intdiv($n, 2);
-
-        return $n % 2 ? $vals[$mid] : ($vals[$mid - 1] + $vals[$mid]) / 2;
-    }
-
-    protected function aggLabel(string $agg): string
-    {
-        return match ($agg) {
-            'net' => '± Netto',
-            'ratio' => '% Marge',
-            'avg' => 'Ø Mittel',
-            'median' => 'Median',
-            'min' => 'Min',
-            'max' => 'Max',
-            'count' => 'Anzahl',
-            'product' => '∏ Produkt',
-            default => 'Σ Summe',
-        };
     }
 
     /**

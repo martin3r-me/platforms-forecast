@@ -21,8 +21,12 @@ class CreatePlanTypeTool implements ToolContract, ToolMetadataContract
     public function getDescription(): string
     {
         return 'POST /plan-types – Erstellt einen Planungs-Typ (Vorlage) inkl. Zeilen. '
-            .'Parameter: name (required), key (required, stabiler Schlüssel), description, '
-            .'rows (array je {key, label, kind[input|sum|percent|reference], config, order}).';
+            .'Parameter: name (required), key (required, stabiler Schlüssel), description, rows. '
+            .'Jede Zeile: {key, label, kind[input|formula], unit (Code z.B. EUR/H/FTE/PCS/PCT), '
+            .'direction[income|expense|neutral], config, order}. '
+            .'Formula-Zeilen (read-only, aggregieren andere Zeilen) brauchen config: '
+            .'{agg: sum|net|avg|median|min|max|count|product, sources: [rowKey, ...]}. '
+            .'"net" = vorzeichenbehaftete Summe (income − expense).';
     }
 
     public function getSchema(): array
@@ -41,8 +45,10 @@ class CreatePlanTypeTool implements ToolContract, ToolMetadataContract
                         'properties' => [
                             'key' => ['type' => 'string'],
                             'label' => ['type' => 'string'],
-                            'kind' => ['type' => 'string', 'enum' => ['input', 'sum', 'percent', 'reference']],
-                            'config' => ['type' => 'object'],
+                            'kind' => ['type' => 'string', 'enum' => ['input', 'formula', 'sum', 'percent', 'reference']],
+                            'unit' => ['type' => 'string', 'description' => 'Einheit-Code: EUR, KEUR, H, MIN, FTE, PCS, PCT.'],
+                            'direction' => ['type' => 'string', 'enum' => ['income', 'expense', 'neutral']],
+                            'config' => ['type' => 'object', 'description' => 'Bei formula: {agg, sources}.'],
                             'order' => ['type' => 'integer'],
                         ],
                         'required' => ['key'],

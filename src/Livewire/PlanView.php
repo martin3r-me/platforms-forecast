@@ -5,6 +5,8 @@ namespace Platform\Forecast\Livewire;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
+use Platform\Forecast\Enums\Direction;
+use Platform\Forecast\Enums\RowKind;
 use Platform\Forecast\Enums\TimeLevel;
 use Platform\Forecast\Models\ForecastPlan;
 use Platform\Forecast\Reconciliation\TimeAxis;
@@ -119,6 +121,51 @@ class PlanView extends Component
             ];
         }
 
+        // Zeilen-Metainfo (Richtung, Einheit, Formel)
+        $rowModels = $plan->resolvedRows()->keyBy('key');
+        $rowInfo = [];
+        foreach ($rows as $rk => $r) {
+            $m = $rowModels->get($rk);
+            $cfg = $m?->config ?? [];
+            $isFormula = ($m?->kind === RowKind::Formula);
+            $agg = $cfg['agg'] ?? 'sum';
+            $dir = $m?->direction instanceof Direction ? $m->direction->value : ($m?->direction ?? 'neutral');
+            $rowInfo[$rk] = [
+                'isFormula' => $isFormula,
+                'direction' => $dir,
+                'unit' => $m?->unit?->symbol,
+                'agg' => $agg,
+                'sources' => $cfg['sources'] ?? [],
+                'signMode' => ($isFormula && $agg === 'net') ? 'net' : 'direction',
+                'aggLabel' => $isFormula ? $this->aggLabel($agg) : null,
+            ];
+        }
+
+        // Formula-Zeilen berechnen (read-only, aggregieren andere Zeilen je Bucket)
+        $formulaCells = [];
+        foreach ($rows as $rk => $r) {
+            if (! $rowInfo[$rk]['isFormula']) {
+                continue;
+            }
+            $agg = $rowInfo[$rk]['agg'];
+            $sources = $rowInfo[$rk]['sources'];
+            $dirs = array_map(fn ($s) => $rowInfo[$s]['direction'] ?? 'neutral', $sources);
+
+            $cells = [];
+            foreach ($columns as $col) {
+                $vals = array_map(fn ($s) => $this->displayVal($s, $col['bucket'], $rows, $meta, $formulaCells), $sources);
+                $cells[$col['bucket']] = $this->aggregate($agg, $vals, $dirs);
+            }
+            $formulaCells[$rk] = $cells;
+
+            $svals = array_map(fn ($s) => $meta[$s]['value'] ?? 0, $sources);
+            $summary = $this->aggregate($agg, $svals, $dirs);
+            $meta[$rk] = [
+                'value' => $summary, 'committed' => $summary, 'rest' => 0.0,
+                'implied' => false, 'spread' => 0.0, 'cellCommitted' => [],
+            ];
+        }
+
         return view('forecast::livewire.plan-view', [
             'plan' => $plan,
             'rows' => $rows,
@@ -127,10 +174,73 @@ class PlanView extends Component
             'levelLabel' => $this->levelLabelDe($level),
             'scopeCaption' => $this->scopeCaption($level),
             'meta' => $meta,
+            'rowInfo' => $rowInfo,
+            'formulaCells' => $formulaCells,
             'breadcrumb' => $breadcrumb,
             'zoomed' => $this->container !== '',
             'canZoom' => $level !== 'hour',
         ])->layout('platform::layouts.app');
+    }
+
+    /** Angezeigter Wert einer Quell-Zeile an einem Bucket (belegt oder ≈ verteilt). */
+    protected function displayVal(string $src, string $bucket, array $rows, array $meta, array $formulaCells): float
+    {
+        if (isset($formulaCells[$src])) {
+            return $formulaCells[$src][$bucket] ?? 0.0;
+        }
+        $v = $rows[$src]['cells'][$bucket]['value'] ?? 0;
+        return $v > 0 ? $v : ($meta[$src]['spread'] ?? 0.0);
+    }
+
+    /**
+     * Generische Aggregation über andere Zellen.
+     *
+     * @param  list<float>   $vals
+     * @param  list<string>  $dirs  Richtungen der Quellen (für "net")
+     */
+    protected function aggregate(string $fn, array $vals, array $dirs = []): float
+    {
+        if (empty($vals)) {
+            return 0.0;
+        }
+        return match ($fn) {
+            'net' => array_sum(array_map(
+                fn ($v, $d) => $d === 'expense' ? -$v : ($d === 'neutral' ? 0 : $v),
+                $vals,
+                $dirs + array_fill(0, count($vals), 'income'),
+            )),
+            'avg' => array_sum($vals) / count($vals),
+            'median' => $this->median($vals),
+            'min' => min($vals),
+            'max' => max($vals),
+            'count' => (float) count(array_filter($vals, fn ($v) => $v != 0)),
+            'product' => array_product($vals),
+            default => array_sum($vals), // sum
+        };
+    }
+
+    /** @param list<float> $vals */
+    protected function median(array $vals): float
+    {
+        sort($vals);
+        $n = count($vals);
+        $mid = intdiv($n, 2);
+
+        return $n % 2 ? $vals[$mid] : ($vals[$mid - 1] + $vals[$mid]) / 2;
+    }
+
+    protected function aggLabel(string $agg): string
+    {
+        return match ($agg) {
+            'net' => '± Netto',
+            'avg' => 'Ø Mittel',
+            'median' => 'Median',
+            'min' => 'Min',
+            'max' => 'Max',
+            'count' => 'Anzahl',
+            'product' => '∏ Produkt',
+            default => 'Σ Summe',
+        };
     }
 
     /**

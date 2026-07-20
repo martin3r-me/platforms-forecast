@@ -10,6 +10,7 @@ use Platform\Forecast\Models\ForecastPlan;
 use Platform\Forecast\Models\ForecastPlanType;
 use Platform\Forecast\Models\ForecastRow;
 use Platform\Forecast\Models\ForecastSnapshot;
+use Platform\Forecast\Models\ForecastUnit;
 use Platform\Forecast\Reconciliation\Mode;
 
 /**
@@ -34,16 +35,7 @@ final class PlanService
             ]);
 
             foreach (array_values($rows) as $i => $r) {
-                ForecastRow::create([
-                    'team_id' => $teamId,
-                    'plan_type_id' => $type->id,
-                    'plan_id' => null,
-                    'key' => $r['key'],
-                    'label' => $r['label'] ?? $r['key'],
-                    'kind' => $r['kind'] ?? 'input',
-                    'config' => $r['config'] ?? null,
-                    'order' => $r['order'] ?? $i,
-                ]);
+                ForecastRow::create($this->rowAttributes($r, $teamId, ['plan_type_id' => $type->id, 'plan_id' => null], $i));
             }
 
             return $type;
@@ -71,16 +63,7 @@ final class PlanService
             ]);
 
             foreach (array_values($extraRows) as $i => $r) {
-                ForecastRow::create([
-                    'team_id' => $teamId,
-                    'plan_type_id' => null,
-                    'plan_id' => $plan->id,
-                    'key' => $r['key'],
-                    'label' => $r['label'] ?? $r['key'],
-                    'kind' => $r['kind'] ?? 'input',
-                    'config' => $r['config'] ?? null,
-                    'order' => $r['order'] ?? $i,
-                ]);
+                ForecastRow::create($this->rowAttributes($r, $teamId, ['plan_type_id' => null, 'plan_id' => $plan->id], $i));
             }
 
             $this->recordChange($plan, $userId, 'plan_create', []);
@@ -185,6 +168,29 @@ final class PlanService
                 'payload' => ['snapshot_uuid' => $snapshot->uuid, 'snapshot_version' => $snapshot->version],
             ]);
         });
+    }
+
+    /**
+     * Baut die Attribute für eine Zeile — inkl. Einheit (per Code aufgelöst),
+     * Richtung, Art und Formel-Config.
+     */
+    private function rowAttributes(array $r, int $teamId, array $parent, int $i): array
+    {
+        $unitId = null;
+        if (! empty($r['unit'])) {
+            $unitId = ForecastUnit::resolve((string) $r['unit'], $teamId)?->id;
+        }
+
+        return array_merge($parent, [
+            'team_id' => $teamId,
+            'key' => $r['key'],
+            'label' => $r['label'] ?? $r['key'],
+            'kind' => $r['kind'] ?? 'input',
+            'unit_id' => $unitId,
+            'direction' => $r['direction'] ?? 'neutral',
+            'config' => $r['config'] ?? null,
+            'order' => $r['order'] ?? $i,
+        ]);
     }
 
     private function recordChange(ForecastPlan $plan, ?int $userId, string $op, array $data): ForecastChange

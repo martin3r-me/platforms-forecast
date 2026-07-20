@@ -4,6 +4,7 @@ namespace Platform\Forecast\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Platform\Forecast\Enums\Direction;
 use Platform\Forecast\Enums\RowKind;
 use Symfony\Component\Uid\UuidV7;
 
@@ -18,14 +19,20 @@ class ForecastRow extends Model
 
     protected $fillable = [
         'uuid', 'team_id', 'plan_type_id', 'plan_id',
-        'key', 'label', 'kind', 'config', 'order',
+        'key', 'label', 'kind', 'unit_id', 'direction', 'config', 'order',
     ];
 
     protected $casts = [
         'kind' => RowKind::class,
+        'direction' => Direction::class,
         'config' => 'array',
         'order' => 'integer',
     ];
+
+    public function unit()
+    {
+        return $this->belongsTo(ForecastUnit::class, 'unit_id');
+    }
 
     protected static function booted(): void
     {

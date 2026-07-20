@@ -21,7 +21,7 @@ class ForecastPlan extends Model
     protected $fillable = [
         'uuid', 'team_id', 'user_id', 'plan_type_id', 'organization_entity_id',
         'name', 'base_level', 'period_start', 'period_end', 'org_mode',
-        'current_version', 'metadata',
+        'lock_policy_id', 'current_version', 'metadata',
     ];
 
     protected $casts = [
@@ -54,6 +54,11 @@ class ForecastPlan extends Model
     public function planType()
     {
         return $this->belongsTo(ForecastPlanType::class, 'plan_type_id');
+    }
+
+    public function lockPolicy()
+    {
+        return $this->belongsTo(ForecastLockPolicy::class, 'lock_policy_id');
     }
 
     /** Instanz-eigene Zeilen (Ergänzungen). */

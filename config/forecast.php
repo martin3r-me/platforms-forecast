@@ -80,6 +80,11 @@ return [
                     'route' => 'forecast.plans.index',
                     'icon'  => 'heroicon-o-table-cells',
                 ],
+                [
+                    'label' => 'Einstellungen',
+                    'route' => 'forecast.settings',
+                    'icon'  => 'heroicon-o-cog-6-tooth',
+                ],
             ],
         ],
     ],

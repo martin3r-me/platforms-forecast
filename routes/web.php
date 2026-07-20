@@ -21,6 +21,7 @@
 use Platform\Forecast\Livewire\Dashboard;
 use Platform\Forecast\Livewire\PlanIndex;
 use Platform\Forecast\Livewire\PlanView;
+use Platform\Forecast\Livewire\Settings;
 
 /**
  * Dashboard
@@ -32,3 +33,8 @@ Route::get('/', Dashboard::class)->name('forecast.dashboard');
  */
 Route::get('/plans', PlanIndex::class)->name('forecast.plans.index');
 Route::get('/plans/{uuid}', PlanView::class)->name('forecast.plans.show');
+
+/**
+ * Einstellungen (read-only): Konfig-Modelle als Index-Seiten
+ */
+Route::get('/settings/{section?}', Settings::class)->name('forecast.settings');

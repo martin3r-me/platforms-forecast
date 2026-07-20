@@ -167,11 +167,14 @@ class PlanView extends Component
             ];
         }
 
-        // Zeit-Sperre: Vergangenheit zu · Vorlauf/Nachlauf-Fenster offen · Kaskade nach unten
+        // Zeit-Sperre aus entkoppelter Policy (Plan-Policy → Team-Default → Legacy → Code-Default)
+        $policy = $plan->lockPolicy ?? \Platform\Forecast\Models\ForecastLockPolicy::resolveDefault($plan->team_id);
         $lock = array_merge(
             ['period_level' => 'month', 'lead_days' => 40, 'grace_days' => 10],
+            $policy ? $policy->toRule() : [],
             (array) ($plan->metadata['lock'] ?? []),
         );
+        $lock['policy_name'] = $policy?->name;
         $now = now();
         $colStatus = [];
         foreach ($columns as $col) {

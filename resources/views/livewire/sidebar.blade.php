@@ -30,6 +30,10 @@
             @svg('heroicon-o-table-cells', 'w-4 h-4 text-[var(--ui-secondary)]')
             <span class="ml-2 text-sm">Planungen</span>
         </x-ui-sidebar-item>
+        <x-ui-sidebar-item :href="route('forecast.settings')">
+            @svg('heroicon-o-cog-6-tooth', 'w-4 h-4 text-[var(--ui-secondary)]')
+            <span class="ml-2 text-sm">Einstellungen</span>
+        </x-ui-sidebar-item>
     </x-ui-sidebar-list>
 
     {{-- Collapsed: Icons-only --}}

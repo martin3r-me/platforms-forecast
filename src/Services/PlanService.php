@@ -210,9 +210,14 @@ final class PlanService
         $i = 0;
         foreach ($sources as $src) {
             if (is_array($src)) {
+                // Quell-Plan per id ODER uuid (MCP-freundlich)
+                $planId = $src['plan_id'] ?? null;
+                if ($planId === null && ! empty($src['plan_uuid'])) {
+                    $planId = ForecastPlan::where('uuid', $src['plan_uuid'])->value('id');
+                }
                 ForecastRowSource::create([
                     'row_id' => $row->id,
-                    'source_plan_id' => $src['plan_id'] ?? null,
+                    'source_plan_id' => $planId,
                     'source_row_key' => $src['row_key'] ?? $src['key'] ?? '',
                     'weight' => $src['weight'] ?? 1,
                     'sort_order' => $i++,

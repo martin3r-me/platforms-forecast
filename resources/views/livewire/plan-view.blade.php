@@ -20,6 +20,10 @@
     };
     $magOf = fn ($rk, $v) => (($rowInfo[$rk]['signMode'] ?? 'direction') === 'net') ? abs($v) : $v;
     $unitOf = fn ($rk) => $rowInfo[$rk]['unit'] ?? '';
+    // %-Zeilen mit 1 Nachkommastelle, sonst ganzzahlig
+    $fmtRow = function ($rk, $v) use ($rowInfo, $fmt) {
+        return ($rowInfo[$rk]['unit'] ?? '') === '%' ? number_format((float) $v, 1, ',', '.') : $fmt($v);
+    };
 @endphp
 
 <x-ui-page>
@@ -57,6 +61,9 @@
                             </span>
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">
                                 @svg('heroicon-o-eye','w-3 h-3') Nur Ansicht
+                            </span>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-muted-10)] text-[var(--ui-muted)]" title="Vorlauf: öffnet X Tage vor Periodenstart · Nachlauf: bleibt Y Tage nach Periodenende offen">
+                                @svg('heroicon-o-lock-closed','w-3 h-3') Vorlauf {{ $lock['lead_days'] }} T · Nachlauf {{ $lock['grace_days'] }} T
                             </span>
                         </div>
                     </div>
@@ -118,7 +125,7 @@
                                 @endif
                             </div>
                             <div class="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums {{ $toneOf($rowKey, $t['value']) }}">
-                                {{ $t['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $t['value']) }}{{ $fmt($magOf($rowKey, $t['value'])) }}<span class="text-sm font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span>
+                                {{ $t['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $t['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $t['value'])) }}<span class="text-sm font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span>
                             </div>
                             @if($isF)
                                 <div class="mt-3 text-[11px] text-[var(--ui-muted)]">berechnet aus {{ count($rowInfo[$rowKey]['sources']) }} Zeilen</div>
@@ -165,13 +172,24 @@
                                     </th>
                                 @endif
                                 @foreach($columns as $col)
+                                    @php $st = $colStatus[$col['bucket']] ?? ['state' => 'mixed', 'days' => null]; @endphp
                                     <th class="group/col bg-[var(--ui-muted-5)] text-right px-3 py-2.5 border-b border-[var(--ui-border)]/60 whitespace-nowrap min-w-[96px]
-                                        {{ $canZoom ? 'cursor-pointer hover:bg-[var(--ui-primary)]/[0.06] transition-colors' : '' }}"
+                                        {{ $canZoom ? 'cursor-pointer hover:bg-[var(--ui-primary)]/[0.06] transition-colors' : '' }}
+                                        {{ $st['state'] === 'closed' ? 'opacity-60' : '' }}"
                                         @if($canZoom) wire:click="zoom('{{ $col['bucket'] }}')" @endif>
-                                        <span class="inline-flex items-center gap-1 text-xs font-medium text-[var(--ui-secondary)]">
-                                            {{ $col['label'] }}
-                                            @if($canZoom)@svg('heroicon-o-magnifying-glass-plus','w-3 h-3 text-[var(--ui-muted)]/50 group-hover/col:text-[var(--ui-primary)] transition-colors')@endif
-                                        </span>
+                                        <div class="flex flex-col items-end gap-0.5">
+                                            <span class="inline-flex items-center gap-1 text-xs font-medium text-[var(--ui-secondary)]">
+                                                {{ $col['label'] }}
+                                                @if($canZoom)@svg('heroicon-o-magnifying-glass-plus','w-3 h-3 text-[var(--ui-muted)]/50 group-hover/col:text-[var(--ui-primary)] transition-colors')@endif
+                                            </span>
+                                            @if($st['state'] === 'open')
+                                                <span class="inline-flex items-center gap-0.5 text-[9px] font-medium text-emerald-600">@svg('heroicon-o-lock-open','w-2.5 h-2.5') offen · noch {{ $st['days'] }} T</span>
+                                            @elseif($st['state'] === 'pending')
+                                                <span class="inline-flex items-center gap-0.5 text-[9px] text-[var(--ui-muted)]">@svg('heroicon-o-clock','w-2.5 h-2.5') öffnet in {{ $st['days'] }} T</span>
+                                            @elseif($st['state'] === 'closed')
+                                                <span class="inline-flex items-center gap-0.5 text-[9px] text-[var(--ui-muted)]/70">@svg('heroicon-o-lock-closed','w-2.5 h-2.5') zu</span>
+                                            @endif
+                                        </div>
                                     </th>
                                 @endforeach
                             </tr>
@@ -199,7 +217,7 @@
                                             $sPct = $s['value'] != 0 ? round($s['committed'] / $s['value'] * 100) : 100;
                                         @endphp
                                         <td class="text-right px-4 py-3 border-b border-r border-[var(--ui-border)]/40 bg-[var(--ui-primary)]/[0.04] align-top">
-                                            <div class="font-semibold tabular-nums {{ $toneOf($rowKey, $s['value']) }}">{{ $s['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $s['value']) }}{{ $fmt($magOf($rowKey, $s['value'])) }}<span class="text-[10px] font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></div>
+                                            <div class="font-semibold tabular-nums {{ $toneOf($rowKey, $s['value']) }}">{{ $s['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $s['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $s['value'])) }}<span class="text-[10px] font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></div>
                                             @if(! $isF && $s['rest'] > 0)
                                                 <div class="mt-1.5 h-1 rounded-full bg-[var(--ui-muted-10)] overflow-hidden flex">
                                                     <div class="h-full bg-[var(--ui-primary)]" style="width: {{ $sPct }}%"></div>
@@ -212,12 +230,12 @@
 
                                     {{-- Spalten --}}
                                     @foreach($columns as $col)
-                                        <td class="text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top group-hover/row:bg-[var(--ui-muted-5)]/60 transition-colors">
+                                        <td class="text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top group-hover/row:bg-[var(--ui-muted-5)]/60 transition-colors {{ (($colStatus[$col['bucket']]['state'] ?? '') === 'closed') ? 'opacity-45' : '' }}">
                                             @if($isF)
                                                 {{-- Formula: berechnet, read-only --}}
                                                 @php $fv = $formulaCells[$rowKey][$col['bucket']] ?? 0; @endphp
                                                 @if($fv != 0)
-                                                    <span class="tabular-nums {{ $toneOf($rowKey, $fv) }}">{{ $signOf($rowKey, $fv) }}{{ $fmt($magOf($rowKey, $fv)) }}<span class="text-[10px] text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
+                                                    <span class="tabular-nums {{ $toneOf($rowKey, $fv) }}">{{ $signOf($rowKey, $fv) }}{{ $fmtRow($rowKey, $magOf($rowKey, $fv)) }}<span class="text-[10px] text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
                                                 @else
                                                     <span class="text-[var(--ui-muted)]/40">·</span>
                                                 @endif
@@ -238,7 +256,7 @@
                                                                 <span class="text-[9px] font-bold leading-none px-1 py-0.5 rounded bg-[var(--ui-primary)]/15 text-[var(--ui-primary)]">V</span>
                                                             @endif
                                                         @endif
-                                                        <span class="tabular-nums {{ $cell['entered'] ? 'font-semibold' : '' }} {{ $toneOf($rowKey, $val) }}">{{ $signOf($rowKey, $val) }}{{ $fmt($val) }}<span class="text-[10px] font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
+                                                        <span class="tabular-nums {{ $cell['entered'] ? 'font-semibold' : '' }} {{ $toneOf($rowKey, $val) }}">{{ $signOf($rowKey, $val) }}{{ $fmtRow($rowKey, $val) }}<span class="text-[10px] font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
                                                     </div>
                                                     @if($rest > 0)
                                                         <div class="mt-1.5 h-1 rounded-full bg-[var(--ui-muted-10)] overflow-hidden flex">
@@ -250,7 +268,7 @@
                                                 @else
                                                     @php $sp = $meta[$rowKey]['spread'] ?? 0; @endphp
                                                     @if($sp > 0)
-                                                        <span class="tabular-nums italic text-[11px] text-[var(--ui-muted)]/55" title="verteilter Rest (nicht verbindlich)">≈&hairsp;{{ $signOf($rowKey, $sp) }}{{ $fmt($sp) }}</span>
+                                                        <span class="tabular-nums italic text-[11px] text-[var(--ui-muted)]/55" title="verteilter Rest (nicht verbindlich)">≈&hairsp;{{ $signOf($rowKey, $sp) }}{{ $fmtRow($rowKey, $sp) }}</span>
                                                     @else
                                                         <span class="text-[var(--ui-muted)]/40">·</span>
                                                     @endif

@@ -137,7 +137,7 @@ class PlanView extends Component
                 'unit' => $m?->unit?->symbol,
                 'agg' => $agg,
                 'sources' => $cfg['sources'] ?? [],
-                'signMode' => ($isFormula && $agg === 'net') ? 'net' : 'direction',
+                'signMode' => ($isFormula && in_array($agg, ['net', 'ratio'], true)) ? 'net' : 'direction',
                 'aggLabel' => $isFormula ? $this->aggLabel($agg) : null,
             ];
         }
@@ -167,6 +167,17 @@ class PlanView extends Component
             ];
         }
 
+        // Zeit-Sperre: Vergangenheit zu · Vorlauf/Nachlauf-Fenster offen · Kaskade nach unten
+        $lock = array_merge(
+            ['period_level' => 'month', 'lead_days' => 40, 'grace_days' => 10],
+            (array) ($plan->metadata['lock'] ?? []),
+        );
+        $now = now();
+        $colStatus = [];
+        foreach ($columns as $col) {
+            $colStatus[$col['bucket']] = $this->lockStatus($col['bucket'], $lock, $now);
+        }
+
         return view('forecast::livewire.plan-view', [
             'plan' => $plan,
             'rows' => $rows,
@@ -180,7 +191,76 @@ class PlanView extends Component
             'breadcrumb' => $breadcrumb,
             'zoomed' => $this->container !== '',
             'canZoom' => $level !== 'hour',
+            'lock' => $lock,
+            'colStatus' => $colStatus,
         ])->layout('platform::layouts.app');
+    }
+
+    /**
+     * Sperr-Status eines Zeit-Buckets. Der Status wird auf der Perioden-Ebene
+     * (config, default Monat) entschieden; feinere Buckets erben ihn (Kaskade),
+     * gröbere (Jahr/Quartal) sind "gemischt".
+     *
+     * @return array{state:string, days:?int}
+     */
+    protected function lockStatus(string $bucket, array $lock, \Illuminate\Support\Carbon $now): array
+    {
+        $periodRank = $this->levelRank((string) $lock['period_level']);
+        $colRank = $this->levelRank(TimeLevel::fromKey($bucket)->value);
+
+        if ($colRank < $periodRank) {
+            return ['state' => 'mixed', 'days' => null];
+        }
+
+        $governing = $this->governingBucket($bucket, $periodRank);
+        [$start, $end] = $this->bucketRange($governing);
+        $opensAt = $start->copy()->subDays((int) $lock['lead_days']);
+        $closesAt = $end->copy()->addDays((int) $lock['grace_days']);
+
+        if ($now->gt($closesAt)) {
+            return ['state' => 'closed', 'days' => null];
+        }
+        if ($now->lt($opensAt)) {
+            return ['state' => 'pending', 'days' => (int) ceil(($opensAt->timestamp - $now->timestamp) / 86400)];
+        }
+        return ['state' => 'open', 'days' => (int) ceil(($closesAt->timestamp - $now->timestamp) / 86400)];
+    }
+
+    protected function levelRank(string $level): int
+    {
+        return ['year' => 0, 'quarter' => 1, 'month' => 2, 'day' => 3, 'hour' => 4][$level] ?? 2;
+    }
+
+    /** Nächst-höherer Bucket auf der Perioden-Ebene (für die Kaskade nach unten). */
+    protected function governingBucket(string $bucket, int $periodRank): string
+    {
+        $k = $bucket;
+        while ($k !== null && $this->levelRank(TimeLevel::fromKey($k)->value) > $periodRank) {
+            $k = TimeAxis::parentKey($k);
+        }
+
+        return $k ?? $bucket;
+    }
+
+    /** @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon} */
+    protected function bucketRange(string $bucket): array
+    {
+        return match (TimeLevel::fromKey($bucket)) {
+            TimeLevel::Year => [Carbon::create((int) $bucket, 1, 1)->startOfYear(), Carbon::create((int) $bucket, 1, 1)->endOfYear()],
+            TimeLevel::Quarter => (function () use ($bucket) {
+                [$y, $q] = explode('-Q', $bucket);
+                $s = Carbon::create((int) $y, ((int) $q - 1) * 3 + 1, 1)->startOfMonth();
+                return [$s, $s->copy()->addMonths(2)->endOfMonth()];
+            })(),
+            TimeLevel::Month => [Carbon::createFromFormat('Y-m', $bucket)->startOfMonth(), Carbon::createFromFormat('Y-m', $bucket)->endOfMonth()],
+            TimeLevel::Day => [Carbon::createFromFormat('Y-m-d', $bucket)->startOfDay(), Carbon::createFromFormat('Y-m-d', $bucket)->endOfDay()],
+            TimeLevel::Hour => (function () use ($bucket) {
+                $day = substr($bucket, 0, (int) strpos($bucket, 'T'));
+                $h = (int) substr($bucket, (int) strpos($bucket, 'T') + 1);
+                $s = Carbon::createFromFormat('Y-m-d', $day)->startOfDay()->addHours($h);
+                return [$s, $s->copy()->endOfHour()];
+            })(),
+        };
     }
 
     /** Angezeigter Wert einer Quell-Zeile an einem Bucket (belegt oder ≈ verteilt). */
@@ -210,6 +290,8 @@ class PlanView extends Component
                 $vals,
                 $dirs + array_fill(0, count($vals), 'income'),
             )),
+            // ratio = sources[0] / sources[1] * 100 (in %); Division durch 0 → 0
+            'ratio' => (($vals[1] ?? 0) != 0) ? ($vals[0] ?? 0) / $vals[1] * 100 : 0.0,
             'avg' => array_sum($vals) / count($vals),
             'median' => $this->median($vals),
             'min' => min($vals),
@@ -234,6 +316,7 @@ class PlanView extends Component
     {
         return match ($agg) {
             'net' => '± Netto',
+            'ratio' => '% Marge',
             'avg' => 'Ø Mittel',
             'median' => 'Median',
             'min' => 'Min',

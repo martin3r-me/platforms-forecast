@@ -19,17 +19,16 @@
  */
 
 use Platform\Forecast\Livewire\Dashboard;
+use Platform\Forecast\Livewire\PlanIndex;
+use Platform\Forecast\Livewire\PlanView;
 
 /**
- * Dashboard Route
- *
- * Hauptübersicht des Moduls
+ * Dashboard
  */
 Route::get('/', Dashboard::class)->name('forecast.dashboard');
 
 /**
- * Weitere Routes hinzufügen:
- * 
- * Route::get('/entities', Entity\Index::class)->name('forecast.entities.index');
- * Route::get('/entities/{entity}', Entity\Show::class)->name('forecast.entities.show');
+ * Planungen (read-only): Liste + zoombare Grid-Ansicht
  */
+Route::get('/plans', PlanIndex::class)->name('forecast.plans.index');
+Route::get('/plans/{uuid}', PlanView::class)->name('forecast.plans.show');

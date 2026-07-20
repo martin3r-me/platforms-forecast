@@ -75,6 +75,11 @@ return [
                     'route' => 'forecast.dashboard',
                     'icon'  => 'heroicon-o-home',
                 ],
+                [
+                    'label' => 'Planungen',
+                    'route' => 'forecast.plans.index',
+                    'icon'  => 'heroicon-o-table-cells',
+                ],
             ],
         ],
     ],

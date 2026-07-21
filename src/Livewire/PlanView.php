@@ -364,6 +364,18 @@ class PlanView extends Component
                 : ($hasParent ? 'instance'
                     : (in_array($pp->id, $detailSourceIds, true) ? 'detail' : 'single'));
         }
+        $selfRole = $planRole[$plan->id] ?? 'single';
+
+        // Für die Doku-Zeile eines Detailplans: in welchen Plänen wird er per Drill-down genutzt?
+        $usedIn = [];
+        if ($selfRole === 'detail') {
+            $consumerIds = DB::table('forecast_row_sources as rs')
+                ->join('forecast_rows as r', 'r.id', '=', 'rs.row_id')
+                ->where('rs.source_plan_id', $plan->id)
+                ->whereNotNull('r.plan_id')
+                ->pluck('r.plan_id')->unique()->all();
+            $usedIn = $allPlans->whereIn('id', $consumerIds)->pluck('name')->values()->all();
+        }
 
         // Kontext = verbundene Komponente des aktuellen Plans (Konsolidierung ∪ Drill-down)
         $adj = [];
@@ -442,6 +454,8 @@ class PlanView extends Component
             'childrenByParent' => $childrenByParent,
             'componentSet' => $componentSet,
             'planRole' => $planRole,
+            'selfRole' => $selfRole,
+            'usedIn' => $usedIn,
             'drillConsumerIds' => array_keys($drillConsumerIds),
             'ancestorIds' => $ancestorIds,
             'isMaster' => $isMaster,

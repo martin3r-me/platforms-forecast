@@ -36,7 +36,7 @@
         </x-ui-sidebar-item>
     </x-ui-sidebar-list>
 
-    {{-- Abschnitt: Planungen (nur Top-Level: Master & Einzelpläne; Instanzen drinnen) --}}
+    {{-- Abschnitt: Planungen nach Rolle gruppiert (Instanzen erreicht man drinnen im Kontext) --}}
     <div x-show="!collapsed">
         @php
             $sbIcon = fn ($r) => match ($r) {
@@ -44,18 +44,30 @@
                 'detail' => ['heroicon-o-magnifying-glass-plus', 'text-amber-500'],
                 default => ['heroicon-o-chart-bar-square', 'text-[var(--ui-primary)]'],
             };
+            $groups = [
+                ['Konsolidierungen', $roots->filter(fn ($r) => ($planRole[$r->id] ?? '') === 'master')],
+                ['Einzelpläne', $roots->filter(fn ($r) => in_array($planRole[$r->id] ?? 'single', ['single', 'instance'], true))],
+                ['Detailpläne', $roots->filter(fn ($r) => ($planRole[$r->id] ?? '') === 'detail')],
+            ];
         @endphp
-        <x-ui-sidebar-list label="Planungen">
-            @forelse($roots as $root)
-                @php [$ic, $col] = $sbIcon($planRole[$root->id] ?? 'single'); @endphp
-                <x-ui-sidebar-item :href="route('forecast.plans.show', ['uuid' => $root->uuid])">
-                    @svg($ic, 'w-4 h-4 '.$col)
-                    <span class="ml-2 text-sm truncate">{{ $root->name }}</span>
-                </x-ui-sidebar-item>
-            @empty
+        @if($roots->isEmpty())
+            <x-ui-sidebar-list label="Planungen">
                 <div class="px-3 py-2 text-xs italic text-[var(--ui-muted)]">Noch keine Planungen</div>
-            @endforelse
-        </x-ui-sidebar-list>
+            </x-ui-sidebar-list>
+        @endif
+        @foreach($groups as [$label, $items])
+            @if($items->isNotEmpty())
+                <x-ui-sidebar-list label="{{ $label }}">
+                    @foreach($items as $root)
+                        @php [$ic, $col] = $sbIcon($planRole[$root->id] ?? 'single'); @endphp
+                        <x-ui-sidebar-item :href="route('forecast.plans.show', ['uuid' => $root->uuid])">
+                            @svg($ic, 'w-4 h-4 '.$col)
+                            <span class="ml-2 text-sm truncate">{{ $root->name }}</span>
+                        </x-ui-sidebar-item>
+                    @endforeach
+                </x-ui-sidebar-list>
+            @endif
+        @endforeach
     </div>
 
     {{-- Collapsed: Icons-only --}}

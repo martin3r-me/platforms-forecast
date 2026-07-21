@@ -64,14 +64,14 @@
                         <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
                             @php
                                 $roleMeta = [
-                                    'master' => ['Master · Konsolidierung', 'heroicon-o-square-3-stack-3d', 'text-indigo-600 bg-indigo-500/10'],
-                                    'instance' => ['Instanz', 'heroicon-o-cube', 'text-emerald-600 bg-emerald-500/10'],
-                                    'detail' => ['Detailplan · Drill-down', 'heroicon-o-magnifying-glass-plus', 'text-amber-600 bg-amber-500/10'],
-                                    'single' => ['Einzelplan', 'heroicon-o-chart-bar-square', 'text-[var(--ui-muted)] bg-[var(--ui-muted-10)]'],
+                                    'master' => ['Master · Konsolidierung', 'heroicon-o-square-3-stack-3d', 'text-indigo-600 bg-indigo-500/10', 'Fasst mehrere Kind-Planungen (Instanzen) zu einem Gesamtbild zusammen. Die Zeilen unten sind die Summe der Instanzen.'],
+                                    'instance' => ['Instanz', 'heroicon-o-cube', 'text-emerald-600 bg-emerald-500/10', 'Eine einzelne Planung, die in einen Master einläuft und dort mitgezählt wird.'],
+                                    'detail' => ['Detailplan · Drill-down', 'heroicon-o-magnifying-glass-plus', 'text-amber-600 bg-amber-500/10', 'Rechnet Details aus (z. B. Menge × Preis) und speist per Drill-down eine einzelne Zeile eines anderen Plans.'],
+                                    'single' => ['Einzelplan', 'heroicon-o-chart-bar-square', 'text-[var(--ui-muted)] bg-[var(--ui-muted-10)]', 'Eigenständige Planung ohne Über- oder Unterplan.'],
                                 ];
-                                $mr = $roleMeta[$planRole[$plan->id] ?? 'single'];
+                                $mr = $roleMeta[$selfRole];
                             @endphp
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold {{ $mr[2] }}">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold {{ $mr[2] }}" title="{{ $mr[3] }}">
                                 @svg($mr[1],'w-3 h-3') {{ $mr[0] }}
                             </span>
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">
@@ -92,6 +92,25 @@
                                 @svg('heroicon-o-lock-closed','w-3 h-3') Vorlauf {{ $lock['lead_days'] }} T · Nachlauf {{ $lock['grace_days'] }} T
                             </span>
                         </div>
+                        {{-- Nette Ein-Zeilen-Erklärung, was diese Planung ist --}}
+                        @php
+                            $explain = match($selfRole) {
+                                'master' => $subMasterCount > 0
+                                    ? "Fasst {$subMasterCount} Unter-Master mit zusammen {$leafCount} Instanzen zu einem Gesamtbild zusammen — die Zahlen unten sind ihre Summe."
+                                    : "Fasst {$childCount} Instanzen zu einem Gesamtbild zusammen — die Zahlen unten sind ihre Summe.",
+                                'instance' => $parentPlan
+                                    ? "Teil der Gesamtplanung „{$parentPlan->name}\" — läuft dort mit ein."
+                                    : "Instanz einer Konsolidierung.",
+                                'detail' => count($usedIn)
+                                    ? "Speist per Drill-down eine Zeile in „".implode('“, „', $usedIn)."\"."
+                                    : "Detailplan — als Drill-down-Quelle vorgesehen.",
+                                default => "Eigenständige Planung — ohne Über- oder Unterplan.",
+                            };
+                        @endphp
+                        <p class="mt-2 flex items-start gap-1.5 text-xs text-[var(--ui-muted)] max-w-2xl">
+                            @svg('heroicon-o-information-circle','w-3.5 h-3.5 mt-px shrink-0 opacity-60')
+                            <span>{{ $explain }}</span>
+                        </p>
                     </div>
 
                     <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--ui-muted-5)] border border-[var(--ui-border)]/50">

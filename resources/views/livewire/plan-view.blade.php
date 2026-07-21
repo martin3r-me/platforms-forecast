@@ -20,6 +20,20 @@
     };
     $magOf = fn ($rk, $v) => (($rowInfo[$rk]['signMode'] ?? 'direction') === 'net') ? abs($v) : $v;
     $unitOf = fn ($rk) => $rowInfo[$rk]['unit'] ?? '';
+    // Delta-Farbe nach WIRKUNG, nicht nach roher Zahl: Aufwand steigt = schlecht (rot),
+    // Ertrag/Netto steigt = gut (grün), neutrale Zeilen (Summen etc.) neutral gefärbt.
+    $deltaTone = function ($rk, $change) use ($rowInfo) {
+        $info = $rowInfo[$rk] ?? [];
+        if (($info['signMode'] ?? 'direction') === 'net') {
+            $eff = $change;
+        } else {
+            $d = $info['direction'] ?? 'neutral';
+            if ($d === 'income') $eff = $change;
+            elseif ($d === 'expense') $eff = -$change;
+            else return 'text-[var(--ui-muted)]/70';
+        }
+        return $eff > 0 ? 'text-emerald-600' : ($eff < 0 ? 'text-rose-600' : 'text-[var(--ui-muted)]/60');
+    };
     // %-Zeilen mit 1 Nachkommastelle, sonst ganzzahlig
     $fmtRow = function ($rk, $v) use ($rowInfo, $fmt) {
         return ($rowInfo[$rk]['unit'] ?? '') === '%' ? number_format((float) $v, 1, ',', '.') : $fmt($v);
@@ -329,7 +343,7 @@
                                             @endif
                                             @if($showDelta && isset($delta[$rowKey][$col['bucket']]))
                                                 @php $d = $delta[$rowKey][$col['bucket']]; @endphp
-                                                <div class="mt-0.5 text-[10px] font-medium {{ $d['abs'] > 0 ? 'text-emerald-600' : ($d['abs'] < 0 ? 'text-rose-600' : 'text-[var(--ui-muted)]/60') }}">
+                                                <div class="mt-0.5 text-[10px] font-medium {{ $deltaTone($rowKey, $d['abs']) }}">
                                                     {{ $d['abs'] > 0 ? '▲' : ($d['abs'] < 0 ? '▼' : '=') }} {{ $d['abs'] >= 0 ? '+' : '−' }}{{ $fmt(abs($d['abs'])) }}@if($d['pct'] !== null) <span class="opacity-75">({{ $d['pct'] >= 0 ? '+' : '−' }}{{ number_format(abs($d['pct']), 1, ',', '.') }}&thinsp;%)</span>@endif
                                                 </div>
                                             @endif

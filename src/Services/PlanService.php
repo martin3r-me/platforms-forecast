@@ -51,12 +51,11 @@ final class PlanService
     public function createPlan(int $teamId, ?int $userId, ForecastPlanType $type, string $name, ?int $orgEntityId = null, string $orgMode = 'detail', array $extraRows = [], array $attrs = []): ForecastPlan
     {
         return DB::transaction(function () use ($teamId, $userId, $type, $name, $orgEntityId, $orgMode, $extraRows, $attrs) {
-            $plan = ForecastPlan::create([
+            $data = [
                 'team_id' => $teamId,
                 'user_id' => $userId,
                 'plan_type_id' => $type->id,
                 'parent_plan_id' => $attrs['parent_plan_id'] ?? null,
-                'distribution_policy_id' => $attrs['distribution_policy_id'] ?? null,
                 'organization_entity_id' => $orgEntityId,
                 'name' => $name,
                 'base_level' => $attrs['base_level'] ?? 'month',
@@ -64,7 +63,12 @@ final class PlanService
                 'period_end' => $attrs['period_end'] ?? null,
                 'org_mode' => $orgMode,
                 'current_version' => 0,
-            ]);
+            ];
+            // Neue Spalte nur nennen, wenn gesetzt (sonst bricht Plan-Anlage ohne Migration).
+            if (! empty($attrs['distribution_policy_id'])) {
+                $data['distribution_policy_id'] = $attrs['distribution_policy_id'];
+            }
+            $plan = ForecastPlan::create($data);
 
             foreach (array_values($extraRows) as $i => $r) {
                 $rowModel = ForecastRow::create($this->rowAttributes($r, $teamId, ['plan_type_id' => null, 'plan_id' => $plan->id], $i));

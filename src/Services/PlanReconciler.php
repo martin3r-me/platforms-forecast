@@ -98,6 +98,27 @@ final class PlanReconciler
             $nonRecomputable[$k] = $nr;
         }
 
+        // Effektiver Faktor: eine nicht-additive Eingabe-Zeile (Faktor), die in ein Produkt
+        // fließt (Umsatz = Gesamt × Anteil), zeigt am Ordner ihren effektiven Wert = Produkt ÷ Basis.
+        $effectiveOf = [];
+        foreach ($resolved as $row) {
+            $k = $row->key;
+            if (($rowInfo[$k]['isFormula'] ?? false) || ! ($rowInfo[$k]['nonAdditive'] ?? false)) {
+                continue;
+            }
+            foreach ($resolved as $prow) {
+                $pk = $prow->key;
+                if (($rowInfo[$pk]['isFormula'] ?? false) && ($rowInfo[$pk]['agg'] ?? '') === 'product') {
+                    $srcs = $rowInfo[$pk]['sources'] ?? [];
+                    if (count($srcs) === 2 && in_array($k, $srcs, true)) {
+                        $effectiveOf[$k] = ['product' => $pk, 'base' => ($srcs[0] === $k ? $srcs[1] : $srcs[0])];
+                        $rowInfo[$k]['hasEffective'] = true;
+                        break;
+                    }
+                }
+            }
+        }
+
         // Eingabe-Zeilen reconcilen
         $rows = [];
         foreach ($resolved as $row) {
@@ -228,6 +249,27 @@ final class PlanReconciler
             }
             ksort($cells);
             $rows[$row->key]['cells'] = $cells;
+        }
+
+        // Am Ordner: leere Faktor-Zeilen mit ihrem EFFEKTIVEN Wert füllen (Produkt ÷ Basis
+        // aus den konsolidierten Zahlen) — statt leer, weil der eingegebene Faktor nicht additiv ist.
+        if ($hasChildren) {
+            foreach ($effectiveOf as $fk => $rel) {
+                $pCells = $rows[$rel['product']]['cells'] ?? [];
+                $bCells = $rows[$rel['base']]['cells'] ?? [];
+                $cells = [];
+                foreach ($pCells as $b => $pc) {
+                    $bv = $bCells[$b]['value'] ?? 0;
+                    if ($bv != 0) {
+                        $cells[$b] = [
+                            'level' => $pc['level'], 'entered' => false, 'mode' => null,
+                            'value' => round($pc['value'] / $bv, 6), 'rest' => 0.0, 'derived' => true, 'effective' => true,
+                        ];
+                    }
+                }
+                ksort($cells);
+                $rows[$fk]['cells'] = $cells;
+            }
         }
 
         // Plan-Gesamtwert je Zeile (für die Wurzel-Übersicht): Eingabe = Σ Jahres-Zellen;

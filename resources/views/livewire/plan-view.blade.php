@@ -390,7 +390,7 @@
                                                         <div class="mt-0.5 text-[10px] text-amber-600">Rest {{ $fmt($rest) }}</div>
                                                     @endif
                                                 @else
-                                                    @php $sp = $meta[$rowKey]['spread'] ?? 0; @endphp
+                                                    @php $sp = $meta[$rowKey]['spreadBy'][$col['bucket']] ?? 0; @endphp
                                                     @if($sp > 0)
                                                         <span class="tabular-nums italic text-[11px] text-[var(--ui-muted)]/55" title="verteilter Rest (nicht verbindlich)">≈&hairsp;{{ $signOf($rowKey, $sp) }}{{ $fmtRow($rowKey, $sp) }}</span>
                                                     @else

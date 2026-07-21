@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Platform\Forecast\Enums\TimeLevel;
+use Platform\Forecast\Models\ForecastDistributionPolicy;
 use Platform\Forecast\Models\ForecastLockPolicy;
 use Platform\Forecast\Models\ForecastPlan;
 use Platform\Forecast\Models\ForecastRowSource;
@@ -79,6 +80,15 @@ class PlanView extends Component
         // kein „offener Rest" — Rest-/Verbindlich-Anzeige wird für diese unterdrückt.
         $isMaster = $plan->children()->exists();
         $childCount = $isMaster ? $plan->children()->count() : 0;
+
+        // Verteilungsschlüssel (wie ein gröberer Wert/Rest nach unten fällt): Plan → Team-Default → Global.
+        // Defensiv: falls die Tabelle noch nicht migriert ist, gleichmäßig verteilen.
+        try {
+            $distPolicy = $plan->distributionPolicy ?? ForecastDistributionPolicy::resolveDefault($plan->team_id);
+        } catch (\Throwable $e) {
+            $distPolicy = null;
+        }
+        $distPolicy ??= new ForecastDistributionPolicy(['key' => 'even']);
         // Zähler-Aufschlüsselung: direkte Sub-Master + Blatt-Instanzen (unterste Ebene)
         $subMasterCount = 0;
         $leafCount = 0;
@@ -109,7 +119,7 @@ class PlanView extends Component
             $rowEntries = $entriesByRow[$rk] ?? [];
 
             $implied = false;
-            $spread = 0.0;
+            $spreadBy = [];
 
             if ($this->container === '') {
                 $value = $totals[$rk] ?? 0.0;   // Plan-Gesamtwert (systemseitig)
@@ -118,22 +128,32 @@ class PlanView extends Component
                 if ($reconciled > 0) {
                     $value = $reconciled;
                 } else {
-                    $value = $this->impliedInto($plan, $cells, $this->container);
+                    $value = $this->impliedInto($plan, $cells, $this->container, $distPolicy);
                     $implied = $value > 0;
                 }
 
+                // Rest gewichtet auf die leeren Spalten verteilen (Verteilungsschlüssel).
                 $storedSum = 0.0;
-                $empty = 0;
+                $emptyBuckets = [];
                 foreach ($columns as $col) {
                     $cv = $cells[$col['bucket']]['value'] ?? 0;
                     if ($cv > 0) {
                         $storedSum += $cv;
                     } else {
-                        $empty++;
+                        $emptyBuckets[] = $col['bucket'];
                     }
                 }
                 $distribute = max(0, $value - $storedSum);
-                $spread = ($empty > 0 && $distribute > 0) ? $distribute / $empty : 0.0;
+                if ($distribute > 0 && $emptyBuckets) {
+                    $wsum = 0.0;
+                    foreach ($emptyBuckets as $b) {
+                        $wsum += $distPolicy->weightForBucket($b);
+                    }
+                    foreach ($emptyBuckets as $b) {
+                        $share = $wsum > 0 ? $distPolicy->weightForBucket($b) / $wsum : 1 / count($emptyBuckets);
+                        $spreadBy[$b] = round($distribute * $share, 4);
+                    }
+                }
             }
 
             $committed = $this->committedFor($rowEntries, $this->container);
@@ -150,7 +170,7 @@ class PlanView extends Component
                 'committed' => $committed,
                 'rest' => $rest,
                 'implied' => $implied,
-                'spread' => $spread,
+                'spreadBy' => $spreadBy,
                 'cellCommitted' => $cellCommitted,
             ];
         }
@@ -160,7 +180,7 @@ class PlanView extends Component
             foreach ($meta as $rk => &$m) {
                 $m['committed'] = $m['value'];
                 $m['rest'] = 0.0;
-                $m['spread'] = 0.0;
+                $m['spreadBy'] = [];
                 $m['cellCommitted'] = [];
             }
             unset($m);
@@ -183,7 +203,7 @@ class PlanView extends Component
                 if (isset($r['cells'][$b])) {
                     $cells[$b] = $r['cells'][$b]['value'];                      // systemseitig reconciled
                 } else {
-                    $vals = array_map(fn ($s) => $meta[$s]['spread'] ?? 0.0, $sources);
+                    $vals = array_map(fn ($s) => $meta[$s]['spreadBy'][$b] ?? 0.0, $sources);
                     $cells[$b] = Aggregation::aggregate($agg, $vals, $dirs);    // verteilter Rest
                 }
             }
@@ -196,7 +216,7 @@ class PlanView extends Component
             } else {
                 $sv = Aggregation::aggregate($agg, array_map(fn ($s) => $meta[$s]['value'] ?? 0.0, $sources), $dirs);
             }
-            $meta[$rk] = ['value' => $sv, 'committed' => $sv, 'rest' => 0.0, 'implied' => false, 'spread' => 0.0, 'cellCommitted' => []];
+            $meta[$rk] = ['value' => $sv, 'committed' => $sv, 'rest' => 0.0, 'implied' => false, 'spreadBy' => [], 'cellCommitted' => []];
         }
 
         // Anteils-Verteilung: je Summen-Block der prozentuale Anteil jeder Mitglied-Zeile
@@ -228,7 +248,7 @@ class PlanView extends Component
             if ($c && ($c['entered'] || $c['value'] != 0)) {
                 return (float) $c['value'];
             }
-            return (float) ($meta[$rk]['spread'] ?? 0);
+            return (float) ($meta[$rk]['spreadBy'][$b] ?? 0);
         };
         $delta = [];
         foreach ($rows as $rk => $r) {
@@ -507,8 +527,9 @@ class PlanView extends Component
      * Impliziter Wert, der in einen (selbst leeren) Container fließt — der Rest
      * höherer Ebenen kaskadiert gleichmäßig nach unten, bis er hier ankommt.
      */
-    protected function impliedInto(ForecastPlan $plan, array $cells, string $container): float
+    protected function impliedInto(ForecastPlan $plan, array $cells, string $container, ?ForecastDistributionPolicy $distPolicy = null): float
     {
+        $distPolicy ??= new ForecastDistributionPolicy(['key' => 'even']);
         $chain = [];
         $k = $container;
         while ($k !== null) {
@@ -535,19 +556,29 @@ class PlanView extends Component
             }
 
             $storedSum = 0.0;
-            $empty = 0;
+            $emptySibs = [];
             foreach ($siblings as $s) {
                 $sv = $cells[$s]['value'] ?? 0;
                 if ($sv > 0) {
                     $storedSum += $sv;
                 } else {
-                    $empty++;
+                    $emptySibs[] = $s;
                 }
             }
             $distribute = max(0, $parentValue - $storedSum);
 
             $childReconciled = $cells[$child]['value'] ?? 0;
-            $value = $childReconciled > 0 ? null : (($empty > 0) ? $distribute / $empty : 0.0);
+            if ($childReconciled > 0 || ! $emptySibs) {
+                $value = $childReconciled > 0 ? null : 0.0;
+            } else {
+                // gewichteter Anteil des Kindes am verteilten Rest (Verteilungsschlüssel)
+                $wsum = 0.0;
+                foreach ($emptySibs as $s) {
+                    $wsum += $distPolicy->weightForBucket($s);
+                }
+                $share = $wsum > 0 ? $distPolicy->weightForBucket($child) / $wsum : 1 / count($emptySibs);
+                $value = $distribute * $share;
+            }
         }
 
         return $value ?? ($cells[$container]['value'] ?? 0);

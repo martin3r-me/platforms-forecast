@@ -3,6 +3,7 @@
         'overview' => ['Übersicht', 'squares-2x2'],
         'units' => ['Einheiten', 'scale'],
         'lock-policies' => ['Sperr-Regeln', 'lock-closed'],
+        'distribution' => ['Verteilung', 'arrows-pointing-out'],
         'plan-types' => ['Plan-Typen', 'rectangle-stack'],
         'vocabulary' => ['Vokabular', 'language'],
     ];
@@ -48,6 +49,7 @@
                     @foreach([
                         ['units','Einheiten','scale', $counts['units'] ?? 0, 'mit Umrechnung je Dimension'],
                         ['lock-policies','Sperr-Regeln','lock-closed', $counts['policies'] ?? 0, 'Vorlauf/Nachlauf, Kaskade'],
+                        ['distribution','Verteilung','arrows-pointing-out', $counts['distributions'] ?? 0, 'Schlüssel nach unten (gleichmäßig/saisonal)'],
                         ['plan-types','Plan-Typen','rectangle-stack', $counts['types'] ?? 0, 'Zeilen-Vorlagen'],
                         ['vocabulary','Vokabular','language', null, 'System-Listen (Arten, Aggregationen …)'],
                     ] as $card)
@@ -124,6 +126,40 @@
                                 @endforeach
                             </tbody>
                         </table>
+                    </div>
+                </x-ui-panel>
+            @endif
+
+            {{-- ═══ Verteilung ═══ --}}
+            @if($section === 'distribution')
+                <x-ui-panel title="Verteilungsschlüssel" subtitle="Wie ein gröberer Wert / der Rest nach unten auf feinere, leere Zellen fällt — gleichmäßig oder saisonal (Monatsgewichte)">
+                    @php $monate = ['J','F','M','A','M','J','J','A','S','O','N','D']; @endphp
+                    <div class="space-y-3">
+                        @foreach($distributions as $d)
+                            <div class="rounded-xl border border-[var(--ui-border)]/50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="flex items-center gap-2">
+                                        @svg($d->key === 'seasonal' ? 'heroicon-o-chart-bar' : 'heroicon-o-minus', 'w-4 h-4 text-[var(--ui-primary)]')
+                                        <span class="font-medium text-[var(--ui-secondary)]">{{ $d->name }}</span>
+                                        @if($d->is_default)<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 font-medium">Default</span>@endif
+                                    </div>
+                                    <span class="text-xs text-[var(--ui-muted)]">{{ $d->key === 'seasonal' ? 'saisonal' : 'gleichmäßig' }} · {{ $d->team_id ? 'Team' : 'global' }}</span>
+                                </div>
+                                @if($d->key === 'seasonal' && is_array($d->weights) && count($d->weights) === 12)
+                                    @php $maxW = max($d->weights) ?: 1; @endphp
+                                    <div class="mt-3 flex items-end gap-1 h-16">
+                                        @foreach($d->weights as $i => $w)
+                                            <div class="flex-1 flex flex-col items-center justify-end gap-1">
+                                                <div class="w-full rounded-t bg-[var(--ui-primary)]/60" style="height: {{ max(4, round($w / $maxW * 100)) }}%" title="{{ $monate[$i] }}: Gewicht {{ $w }}"></div>
+                                                <span class="text-[9px] text-[var(--ui-muted)]">{{ $monate[$i] }}</span>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <div class="mt-2 text-xs text-[var(--ui-muted)]">Gleiche Gewichte auf alle Perioden.</div>
+                                @endif
+                            </div>
+                        @endforeach
                     </div>
                 </x-ui-panel>
             @endif

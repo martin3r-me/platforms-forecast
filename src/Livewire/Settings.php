@@ -4,6 +4,7 @@ namespace Platform\Forecast\Livewire;
 
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
+use Platform\Forecast\Models\ForecastDistributionPolicy;
 use Platform\Forecast\Models\ForecastLockPolicy;
 use Platform\Forecast\Models\ForecastPlanType;
 use Platform\Forecast\Models\ForecastUnit;
@@ -18,7 +19,7 @@ class Settings extends Component
 
     public function mount(?string $section = null): void
     {
-        $this->section = in_array($section, ['units', 'lock-policies', 'plan-types', 'vocabulary'], true)
+        $this->section = in_array($section, ['units', 'lock-policies', 'distribution', 'plan-types', 'vocabulary'], true)
             ? $section
             : 'overview';
     }
@@ -34,6 +35,8 @@ class Settings extends Component
             $data['units'] = ForecastUnit::where($teamScope)->orderBy('dimension')->orderBy('sort_order')->get();
         } elseif ($this->section === 'lock-policies') {
             $data['policies'] = ForecastLockPolicy::where($teamScope)->orderByDesc('is_default')->orderBy('name')->get();
+        } elseif ($this->section === 'distribution') {
+            $data['distributions'] = ForecastDistributionPolicy::where($teamScope)->orderByDesc('is_default')->orderBy('name')->get();
         } elseif ($this->section === 'plan-types') {
             $data['types'] = ForecastPlanType::where('team_id', $teamId)->withCount(['rows', 'plans'])->orderBy('name')->get();
         } elseif ($this->section === 'vocabulary') {
@@ -44,6 +47,7 @@ class Settings extends Component
         $data['counts'] = [
             'units' => ForecastUnit::where($teamScope)->count(),
             'policies' => ForecastLockPolicy::where($teamScope)->count(),
+            'distributions' => ForecastDistributionPolicy::where($teamScope)->count(),
             'types' => ForecastPlanType::where('team_id', $teamId)->count(),
         ];
 

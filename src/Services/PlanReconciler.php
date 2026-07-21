@@ -78,6 +78,26 @@ final class PlanReconciler
             ];
         }
 
+        // „Nicht neu-rechenbar" je Formel-Zeile: hängt (transitiv) an einer nicht-additiven
+        // Quelle (Faktor/Quote). Am Ordner werden solche Zeilen NICHT neu gerechnet, sondern
+        // aus den Kind-Werten summiert (mit leerem Faktor käme sonst Unsinn heraus).
+        $nonRecomputable = [];
+        foreach ($resolved as $row) {
+            $k = $row->key;
+            if (! $rowInfo[$k]['isFormula']) {
+                $nonRecomputable[$k] = false;
+                continue;
+            }
+            $nr = false;
+            foreach ($rowInfo[$k]['sources'] as $s) {
+                if (($rowInfo[$s]['nonAdditive'] ?? false) || ($nonRecomputable[$s] ?? false)) {
+                    $nr = true;
+                    break;
+                }
+            }
+            $nonRecomputable[$k] = $nr;
+        }
+
         // Eingabe-Zeilen reconcilen
         $rows = [];
         foreach ($resolved as $row) {
@@ -110,12 +130,15 @@ final class PlanReconciler
         // Konsolidierung: Eingabe-Zeilen der Kind-Instanzen aufsummieren
         // (Formel-Zeilen werden danach auf den konsolidierten Eingaben neu gerechnet).
         $children = ForecastPlan::where('parent_plan_id', $plan->id)->get();
+        $hasChildren = $children->isNotEmpty();
         foreach ($children as $child) {
             $cv = $this->compute($child, $visiting);
             foreach ($resolved as $row) {
-                // Formel-Zeilen werden neu gerechnet; ratio-Zeilen (Faktoren/Quoten) sind
-                // NICHT additiv (0,3 + 0,3 ≠ 0,6) → am Ordner nicht aufsummieren, leer lassen.
-                if ($rowInfo[$row->key]['isFormula'] || ($rowInfo[$row->key]['nonAdditive'] ?? false)) {
+                // ratio-Zeilen (Faktoren/Quoten) sind NICHT additiv (0,3 + 0,3 ≠ 0,6) → nie summieren.
+                // Formel-Zeilen werden normal neu gerechnet — AUSSER sie sind nicht neu-rechenbar
+                // (hängen an einem Faktor): die werden hier wie Eingaben aus den Kindern summiert.
+                $info = $rowInfo[$row->key];
+                if (($info['nonAdditive'] ?? false) || ($info['isFormula'] && ! ($nonRecomputable[$row->key] ?? false))) {
                     continue;
                 }
 
@@ -164,6 +187,10 @@ final class PlanReconciler
             if (! $rowInfo[$row->key]['isFormula']) {
                 continue;
             }
+            // Am Ordner: nicht neu-rechenbare Formeln sind schon per Kind-Summe konsolidiert.
+            if ($hasChildren && ($nonRecomputable[$row->key] ?? false)) {
+                continue;
+            }
 
             $sources = [];
             foreach ($row->sources as $src) {
@@ -208,7 +235,16 @@ final class PlanReconciler
         $totals = [];
         foreach ($resolved as $row) {
             $k = $row->key;
-            if ($rowInfo[$k]['isFormula']) {
+            if ($rowInfo[$k]['isFormula'] && $hasChildren && ($nonRecomputable[$k] ?? false)) {
+                // Am Ordner wie Eingabe konsolidiert → Gesamtwert = Σ Jahres-Zellen.
+                $sum = 0.0;
+                foreach ($rows[$k]['cells'] as $c) {
+                    if (($c['level'] ?? '') === 'year') {
+                        $sum += $c['value'];
+                    }
+                }
+                $totals[$k] = round($sum, 4);
+            } elseif ($rowInfo[$k]['isFormula']) {
                 $vals = [];
                 $dirs = [];
                 foreach ($row->sources as $src) {

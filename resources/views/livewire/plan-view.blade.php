@@ -171,6 +171,7 @@
                         @php
                             $t = $meta[$rowKey] ?? ['value' => 0, 'rest' => 0, 'committed' => 0, 'implied' => false];
                             $isF = $rowInfo[$rowKey]['isFormula'] ?? false;
+                            $naMaster = $isMaster && ($rowInfo[$rowKey]['nonAdditive'] ?? false);
                             $pct = $t['value'] != 0 ? round($t['committed'] / $t['value'] * 100) : 100;
                         @endphp
                         <div class="relative overflow-hidden rounded-2xl border border-[var(--ui-border)]/60 bg-[var(--ui-surface)] p-4">
@@ -183,10 +184,14 @@
                                     <span class="text-[10px] uppercase tracking-wider text-[var(--ui-muted)]/70">{{ $unitOf($rowKey) ?: $row['kind'] }}</span>
                                 @endif
                             </div>
-                            <div class="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums {{ $toneOf($rowKey, $t['value']) }}">
-                                {{ $t['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $t['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $t['value'])) }}<span class="text-sm font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span>
+                            <div class="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums {{ $naMaster ? 'text-[var(--ui-muted)]/40' : $toneOf($rowKey, $t['value']) }}">
+                                @if($naMaster)–@else{{ $t['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $t['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $t['value'])) }}<span class="text-sm font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span>@endif
                             </div>
-                            @if($isF)
+                            @if($naMaster)
+                                <div class="mt-3 inline-flex items-center gap-1 text-[11px] text-[var(--ui-muted)]" title="Quoten/Faktoren sind nicht additiv — am Ordner nicht aufsummierbar, nur je Blatt erfasst.">
+                                    @svg('heroicon-o-minus-circle','w-3.5 h-3.5') nicht aggregierbar · je Blatt erfasst
+                                </div>
+                            @elseif($isF)
                                 @php $sc = $rowInfo[$rowKey]['sourceCount'] ?? count($rowInfo[$rowKey]['sources']); @endphp
                                 <div class="mt-3 text-[11px] text-[var(--ui-muted)]">berechnet aus {{ $sc }} {{ $sc === 1 ? 'Zeile' : 'Zeilen' }}</div>
                             @elseif($isMaster)

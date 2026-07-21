@@ -249,11 +249,12 @@
                                 @svg('heroicon-o-arrow-trending-up','w-3.5 h-3.5') Δ Vorperiode
                             </button>
                         </div>
+                        {{-- Feld-Zustände: sieht es aus wie ein Feld, kannst du tippen — sonst nicht. --}}
                         <div class="flex items-center gap-3 text-[11px] text-[var(--ui-muted)]">
-                            <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-emerald-500/15 text-emerald-600">+</span> Plus</span>
-                            <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-primary)]/15 text-[var(--ui-primary)]">V</span> Verteilen</span>
-                            <span class="inline-flex items-center gap-1 italic">≈ verteilter Rest</span>
-                            <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span> berechnet</span>
+                            <span class="inline-flex items-center gap-1" title="Offen: hier kannst du (bald) tippen — Periode ist offen"><span class="w-3 h-3 rounded-sm bg-[var(--ui-primary)]/[0.12] ring-1 ring-inset ring-[var(--ui-primary)]/40"></span> offen · tippbar</span>
+                            <span class="inline-flex items-center gap-1" title="Berechnet: ergibt sich aus anderen Zeilen"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span> berechnet</span>
+                            <span class="inline-flex items-center gap-1" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch"><span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600">↑</span> abgeleitet</span>
+                            <span class="inline-flex items-center gap-1" title="Zu: Periode geschlossen — keine Eingabe">@svg('heroicon-o-lock-closed','w-3 h-3 text-[var(--ui-muted)]/60') zu</span>
                         </div>
                     </div>
                 </div>
@@ -311,7 +312,8 @@
                                     {{-- Zeilen-Kopf --}}
                                     <td class="sticky left-0 z-10 bg-[var(--ui-surface-solid)] {{ $isF ? 'shadow-[inset_0_0_0_100vw_var(--ui-muted-5)]' : '' }} px-4 py-3 border-b border-[var(--ui-border)]/40 transition-colors">
                                         <div class="flex items-center gap-1.5">
-                                            @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span>@endif
+                                            @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]" title="Berechnet: ergibt sich aus anderen Zeilen — nicht eingebbar">ƒ</span>@endif
+                                            @if($isMaster && ! $isF)<span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600 inline-flex items-center gap-0.5" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch — hier nicht direkt eingebbar">↑</span>@endif
                                             <span class="font-medium text-[var(--ui-secondary)]">{{ $row['label'] }}</span>
                                             @if(!empty($rowInfo[$rowKey]['warnings']))
                                                 <span class="text-amber-600" title="Konsolidierung ausgelassen — {{ implode(' · ', $rowInfo[$rowKey]['warnings']) }}">@svg('heroicon-o-exclamation-triangle','w-3.5 h-3.5')</span>
@@ -351,10 +353,29 @@
 
                                     {{-- Spalten --}}
                                     @foreach($columns as $col)
-                                        <td class="relative text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top group-hover/row:bg-[var(--ui-muted-5)]/60 transition-colors {{ (($colStatus[$col['bucket']]['state'] ?? '') === 'closed') ? 'opacity-45' : '' }}">
-                                            @if(($timeDetail[$rowKey][$col['bucket']] ?? false) && $canZoom)
+                                        @php
+                                            $bkt = $col['bucket'];
+                                            $colClosed = (($colStatus[$bkt]['state'] ?? '') === 'closed');
+                                            // Vier Feld-Zustände — Orientierung: sieht es aus wie ein Feld, kannst du tippen.
+                                            //   computed = ƒ (ergibt sich) · derived = Ordner/Detail (kommt hoch) · locked = zu · open = tippbar
+                                            $cellState = $isF ? 'computed'
+                                                : ((($isMaster && ! $isF) || ! empty($rowInfo[$rowKey]['refPlans'])) ? 'derived'
+                                                : ($colClosed ? 'locked' : 'open'));
+                                            $hasDetailMark = ($timeDetail[$rowKey][$bkt] ?? false) && $canZoom;
+                                        @endphp
+                                        <td class="relative text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top transition-colors
+                                            {{ $cellState === 'open'
+                                                ? 'bg-[var(--ui-primary)]/[0.04] cursor-text group-hover/row:bg-[var(--ui-primary)]/[0.07] hover:!bg-[var(--ui-primary)]/[0.11] hover:shadow-[inset_0_0_0_1px_var(--ui-primary)]'
+                                                : ($cellState === 'locked'
+                                                    ? 'opacity-50 group-hover/row:bg-[var(--ui-muted-5)]/50'
+                                                    : 'group-hover/row:bg-[var(--ui-muted-5)]/60') }}">
+                                            @if($hasDetailMark)
                                                 <span class="absolute top-1 left-1.5 text-[var(--ui-primary)]/45 group-hover/row:text-[var(--ui-primary)]/70 transition-colors" title="Enthält feineres Detail — Spalte anklicken zum Reinzoomen">
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
+                                                </span>
+                                            @elseif($cellState === 'locked')
+                                                <span class="absolute top-1 left-1.5 text-[var(--ui-muted)]/40" title="Periode geschlossen — hier ist keine Eingabe möglich">
+                                                    @svg('heroicon-o-lock-closed','w-3 h-3')
                                                 </span>
                                             @endif
                                             @if($partial[$rowKey][$col['bucket']] ?? false)

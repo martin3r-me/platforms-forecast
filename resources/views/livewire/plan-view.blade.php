@@ -158,7 +158,12 @@
                                 <div class="mt-3 text-[11px] text-[var(--ui-muted)]">berechnet aus {{ $sc }} {{ $sc === 1 ? 'Zeile' : 'Zeilen' }}</div>
                             @elseif($isMaster)
                                 <div class="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600">
-                                    @svg('heroicon-o-square-3-stack-3d','w-3.5 h-3.5') konsolidiert aus {{ $childCount }} {{ $childCount === 1 ? 'Instanz' : 'Instanzen' }}
+                                    @svg('heroicon-o-square-3-stack-3d','w-3.5 h-3.5')
+                                    @if($subMasterCount > 0)
+                                        konsolidiert aus {{ $subMasterCount }} Master · {{ $leafCount }} {{ $leafCount === 1 ? 'Instanz' : 'Instanzen' }}
+                                    @else
+                                        konsolidiert aus {{ $childCount }} {{ $childCount === 1 ? 'Instanz' : 'Instanzen' }}
+                                    @endif
                                 </div>
                             @else
                                 <div class="mt-3 h-1.5 rounded-full bg-[var(--ui-muted-10)] overflow-hidden flex">

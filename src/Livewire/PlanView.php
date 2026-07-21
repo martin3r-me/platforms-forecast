@@ -79,6 +79,9 @@ class PlanView extends Component
         // kein „offener Rest" — Rest-/Verbindlich-Anzeige wird für diese unterdrückt.
         $isMaster = $plan->children()->exists();
         $childCount = $isMaster ? $plan->children()->count() : 0;
+        // Zähler-Aufschlüsselung: direkte Sub-Master + Blatt-Instanzen (unterste Ebene)
+        $subMasterCount = 0;
+        $leafCount = 0;
 
         $columns = $this->columns($plan);
         $level = $this->childLevel($this->container);
@@ -330,6 +333,27 @@ class PlanView extends Component
         $ancestorIds = array_map(fn ($a) => $a->id, $ancestors);
         $ancestorIds[] = $plan->id;
 
+        // Zähler-Aufschlüsselung des Masters: direkte Sub-Master + Blatt-Instanzen gesamt
+        if ($isMaster) {
+            foreach (($childrenByParent[$plan->id] ?? collect()) as $dk) {
+                if (($childrenByParent[$dk->id] ?? collect())->isNotEmpty()) {
+                    $subMasterCount++;
+                }
+            }
+            $countLeaves = function ($id) use (&$countLeaves, $childrenByParent) {
+                $kids = $childrenByParent[$id] ?? collect();
+                if ($kids->isEmpty()) {
+                    return 1;
+                }
+                $n = 0;
+                foreach ($kids as $k) {
+                    $n += $countLeaves($k->id);
+                }
+                return $n;
+            };
+            $leafCount = $countLeaves($plan->id);
+        }
+
         $detailSourceIds = ForecastRowSource::whereNotNull('source_plan_id')
             ->pluck('source_plan_id')->map(fn ($x) => (int) $x)->unique()->all();
         $planRole = [];
@@ -422,6 +446,8 @@ class PlanView extends Component
             'ancestorIds' => $ancestorIds,
             'isMaster' => $isMaster,
             'childCount' => $childCount,
+            'subMasterCount' => $subMasterCount,
+            'leafCount' => $leafCount,
             'timeDetail' => $timeDetail,
             'partial' => $partial,
             'delta' => $delta,

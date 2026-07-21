@@ -136,6 +136,15 @@ final class PlanService
         });
     }
 
+    /** Soft-Delete eines Planungs-Typs samt seiner Zeilen (reversibel). Pläne bleiben unberührt. */
+    public function deletePlanType(ForecastPlanType $type): void
+    {
+        DB::transaction(function () use ($type) {
+            $type->rows()->delete();
+            $type->delete();
+        });
+    }
+
     /** Erzeugt einen benannten Snapshot des aktuellen Stands (keine neue Version). */
     public function createSnapshot(ForecastPlan $plan, string $name, ?int $userId = null, ?string $note = null): ForecastSnapshot
     {

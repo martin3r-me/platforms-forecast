@@ -387,8 +387,10 @@
                                             @php
                                                 $hasShare = $showShare && isset($share[$rowKey][$col['bucket']]);
                                                 $hasDelta = $showDelta && isset($delta[$rowKey][$col['bucket']]);
+                                                $qBasis = $rowInfo[$rowKey]['quoteBasis'] ?? null;
+                                                $hasQuote = $showShare && $qBasis && isset($quote[$rowKey][$col['bucket']]);
                                             @endphp
-                                            @if($hasShare || $hasDelta)
+                                            @if($hasShare || $hasDelta || $hasQuote)
                                                 <div class="mt-2 pt-1.5 border-t border-dashed border-[var(--ui-border)]/40 flex flex-col items-end gap-1">
                                                     @if($hasShare)
                                                         <div class="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--ui-primary)]">
@@ -396,6 +398,11 @@
                                                                 <span class="h-full bg-[var(--ui-primary)]" style="width: {{ min(100, $share[$rowKey][$col['bucket']]) }}%"></span>
                                                             </span>
                                                             {{ number_format($share[$rowKey][$col['bucket']], 1, ',', '.') }}&thinsp;%
+                                                        </div>
+                                                    @endif
+                                                    @if($hasQuote)
+                                                        <div class="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--ui-secondary)]" title="Anteil an „{{ $rows[$qBasis]['label'] ?? $qBasis }}“ (Bezugsgröße)">
+                                                            {{ number_format($quote[$rowKey][$col['bucket']], 1, ',', '.') }}&thinsp;% <span class="text-[var(--ui-muted)]/70">v. {{ \Illuminate\Support\Str::limit($rows[$qBasis]['label'] ?? $qBasis, 16) }}</span>
                                                         </div>
                                                     @endif
                                                     @if($hasDelta)

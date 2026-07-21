@@ -64,6 +64,7 @@ final class PlanReconciler
                 'direction' => $dir,
                 'unit' => $row->unit?->symbol,
                 'section' => $row->config['section'] ?? null,
+                'quoteBasis' => $row->config['quote_basis'] ?? null,
                 'agg' => $agg,
                 'sources' => $samePlanKeys,
                 'refPlans' => $refPlans,

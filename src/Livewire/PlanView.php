@@ -243,6 +243,23 @@ class PlanView extends Component
             }
         }
 
+        // Bezugsgrößen-Quote: Zeile mit quoteBasis zeigt „Betrag ÷ Referenz-Zeile" je Spalte.
+        // Verallgemeinerung von „% Anteil" (Referenz frei wählbar, nicht nur Summen-Block).
+        $quote = [];
+        foreach ($rows as $rk => $r) {
+            $basisKey = $rowInfo[$rk]['quoteBasis'] ?? null;
+            if (! $basisKey || ! isset($rows[$basisKey])) {
+                continue;
+            }
+            foreach ($columns as $col) {
+                $b = $col['bucket'];
+                $ref = $colVal($basisKey, $b);
+                if ($ref != 0) {
+                    $quote[$rk][$b] = $colVal($rk, $b) / $ref * 100;
+                }
+            }
+        }
+
         // „Hat feineres Detail"-Marker je Zelle: existiert eine gespeicherte Zelle auf einer
         // feineren Ebene innerhalb dieser Spalte? (echtes Detail, nicht nur verteilter Rest)
         $timeDetail = [];
@@ -467,6 +484,7 @@ class PlanView extends Component
             'delta' => $delta,
             'showDelta' => $this->showDelta,
             'share' => $share,
+            'quote' => $quote,
             'showShare' => $this->showShare,
             'plan' => $plan,
             'rows' => $rows,

@@ -197,10 +197,13 @@ final class PlanService
         $kind = $r['kind'] ?? 'input';
         $agg = $kind === 'formula' ? ($r['config']['agg'] ?? $r['agg'] ?? 'sum') : null;
 
-        // Optionale Sektion (Zeilen-Gruppe) wandert in die config — keine Migration nötig.
+        // Optionale Sektion + Bezugsgrößen-Quote wandern in die config — keine Migration nötig.
         $config = $r['config'] ?? null;
         if (! empty($r['section'])) {
             $config = array_merge((array) $config, ['section' => (string) $r['section']]);
+        }
+        if (! empty($r['quote_basis'])) {
+            $config = array_merge((array) $config, ['quote_basis' => (string) $r['quote_basis']]);
         }
 
         return array_merge($parent, [

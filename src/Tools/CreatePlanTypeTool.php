@@ -49,6 +49,7 @@ class CreatePlanTypeTool implements ToolContract, ToolMetadataContract
                             'unit' => ['type' => 'string', 'description' => 'Einheit-Code: EUR, KEUR, H, MIN, FTE, PCS, PCT.'],
                             'direction' => ['type' => 'string', 'enum' => ['income', 'expense', 'neutral']],
                             'section' => ['type' => 'string', 'description' => 'Optionale Sektion (Zeilen-Gruppe), z. B. "Umsatzerlöse". Aufeinanderfolgende Zeilen gleicher Sektion werden gruppiert.'],
+                            'quote_basis' => ['type' => 'string', 'description' => 'Optional: Key einer Referenz-Zeile; zeigt bei „Anteil %" die Quote Betrag ÷ Referenz (z. B. Kostenzeile ÷ "gesamtleistung.betrag").'],
                             'config' => ['type' => 'object', 'description' => 'Bei formula: {agg, sources}.'],
                             'order' => ['type' => 'integer'],
                         ],

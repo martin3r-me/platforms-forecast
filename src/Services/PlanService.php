@@ -56,6 +56,7 @@ final class PlanService
                 'user_id' => $userId,
                 'plan_type_id' => $type->id,
                 'parent_plan_id' => $attrs['parent_plan_id'] ?? null,
+                'distribution_policy_id' => $attrs['distribution_policy_id'] ?? null,
                 'organization_entity_id' => $orgEntityId,
                 'name' => $name,
                 'base_level' => $attrs['base_level'] ?? 'month',

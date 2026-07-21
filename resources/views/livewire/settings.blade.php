@@ -147,10 +147,11 @@
                                 </div>
                                 @if($d->key === 'seasonal' && is_array($d->weights) && count($d->weights) === 12)
                                     @php $maxW = max($d->weights) ?: 1; @endphp
-                                    <div class="mt-3 flex items-end gap-1 h-16">
+                                    <div class="mt-3 flex items-end gap-1">
                                         @foreach($d->weights as $i => $w)
-                                            <div class="flex-1 flex flex-col items-center justify-end gap-1">
-                                                <div class="w-full rounded-t bg-[var(--ui-primary)]/60" style="height: {{ max(4, round($w / $maxW * 100)) }}%" title="{{ $monate[$i] }}: Gewicht {{ $w }}"></div>
+                                            <div class="flex-1 flex flex-col items-center gap-1">
+                                                <span class="text-[9px] text-[var(--ui-muted)]/70 tabular-nums">{{ number_format($w, 1, ',', '.') }}</span>
+                                                <div class="w-full rounded-t bg-[var(--ui-primary)]/60" style="height: {{ max(3, (int) round($w / $maxW * 56)) }}px" title="{{ $monate[$i] }}: Gewicht {{ $w }}"></div>
                                                 <span class="text-[9px] text-[var(--ui-muted)]">{{ $monate[$i] }}</span>
                                             </div>
                                         @endforeach

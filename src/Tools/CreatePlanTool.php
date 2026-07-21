@@ -39,6 +39,7 @@ class CreatePlanTool implements ToolContract, ToolMetadataContract
                 'period_start' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
                 'period_end' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
                 'parent_plan' => ['type' => 'string', 'description' => 'uuid der Konsolidierungs-Elternplanung (dieser Plan wird Kind davon).'],
+                'distribution_policy' => ['type' => 'string', 'description' => 'Verteilungsschlüssel (uuid oder key), z. B. "seasonal" für saisonale Abwärts-Verteilung. Ohne Angabe greift der Default (gleichmäßig).'],
                 'rows' => [
                     'type' => 'array',
                     'description' => 'Zusätzliche Instanz-Zeilen (ergänzen den Typ).',
@@ -76,6 +77,16 @@ class CreatePlanTool implements ToolContract, ToolMetadataContract
                 $parentId = $parent->id;
             }
 
+            $distPolicyId = null;
+            if (! empty($arguments['distribution_policy'])) {
+                $ref = (string) $arguments['distribution_policy'];
+                $dp = \Platform\Forecast\Models\ForecastDistributionPolicy::where(fn ($q) => $q->where('team_id', $teamId)->orWhereNull('team_id'))
+                    ->where(fn ($q) => $q->where('uuid', $ref)->orWhere('key', $ref))
+                    ->orderByRaw('team_id is null')
+                    ->first();
+                $distPolicyId = $dp?->id;
+            }
+
             $plan = (new PlanService())->createPlan(
                 $teamId,
                 $this->userId($context),
@@ -89,6 +100,7 @@ class CreatePlanTool implements ToolContract, ToolMetadataContract
                     'period_start' => $arguments['period_start'] ?? null,
                     'period_end' => $arguments['period_end'] ?? null,
                     'parent_plan_id' => $parentId,
+                    'distribution_policy_id' => $distPolicyId,
                 ],
             );
 

@@ -38,6 +38,14 @@
     $fmtRow = function ($rk, $v) use ($rowInfo, $fmt) {
         return ($rowInfo[$rk]['unit'] ?? '') === '%' ? number_format((float) $v, 1, ',', '.') : $fmt($v);
     };
+    // Rolle der aktuellen Planung — EIN kanonischer Begriffssatz, überall gleich: [Label, Icon, Text-Farbe, BG, Tooltip]
+    $roleMeta = [
+        'master'   => ['Master', 'heroicon-o-square-3-stack-3d', 'text-indigo-600', 'bg-indigo-500/10', 'Fasst mehrere Instanzen zu einem Gesamtbild zusammen. Die Zeilen unten sind ihre Summe.'],
+        'instance' => ['Instanz', 'heroicon-o-cube', 'text-emerald-600', 'bg-emerald-500/10', 'Eine einzelne Planung, die in einen Master einläuft und dort mitgezählt wird.'],
+        'detail'   => ['Detailplan', 'heroicon-o-magnifying-glass-plus', 'text-amber-600', 'bg-amber-500/10', 'Rechnet Details aus (z. B. Menge × Preis) und speist per Drill-down eine einzelne Zeile eines anderen Plans.'],
+        'single'   => ['Einzelplan', 'heroicon-o-chart-bar-square', 'text-[var(--ui-muted)]', 'bg-[var(--ui-muted-10)]', 'Eigenständige Planung — ohne Über- oder Unterplan.'],
+    ];
+    $mr = $roleMeta[$selfRole] ?? $roleMeta['single'];
 @endphp
 
 <x-ui-page>
@@ -50,7 +58,14 @@
             ['label' => 'Forecast', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
             ['label' => 'Planungen', 'href' => route('forecast.plans.index')],
             ['label' => $plan->name],
-        ]" />
+        ]">
+            {{-- Dauerhaft sichtbar (Leiste ist sticky): welche Rolle hat die aktuelle Planung --}}
+            <x-slot name="left">
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold {{ $mr[2] }} {{ $mr[3] }}" title="{{ $mr[4] }}">
+                    @svg($mr[1],'w-3 h-3') {{ $mr[0] }}
+                </span>
+            </x-slot>
+        </x-ui-page-actionbar>
     </x-slot>
 
     <x-ui-page-container>
@@ -62,16 +77,7 @@
                     <div class="min-w-0">
                         <h1 class="text-xl font-semibold tracking-tight text-[var(--ui-secondary)]">{{ $plan->name }}</h1>
                         <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                            @php
-                                $roleMeta = [
-                                    'master' => ['Master · Konsolidierung', 'heroicon-o-square-3-stack-3d', 'text-indigo-600 bg-indigo-500/10', 'Fasst mehrere Kind-Planungen (Instanzen) zu einem Gesamtbild zusammen. Die Zeilen unten sind die Summe der Instanzen.'],
-                                    'instance' => ['Instanz', 'heroicon-o-cube', 'text-emerald-600 bg-emerald-500/10', 'Eine einzelne Planung, die in einen Master einläuft und dort mitgezählt wird.'],
-                                    'detail' => ['Detailplan · Drill-down', 'heroicon-o-magnifying-glass-plus', 'text-amber-600 bg-amber-500/10', 'Rechnet Details aus (z. B. Menge × Preis) und speist per Drill-down eine einzelne Zeile eines anderen Plans.'],
-                                    'single' => ['Einzelplan', 'heroicon-o-chart-bar-square', 'text-[var(--ui-muted)] bg-[var(--ui-muted-10)]', 'Eigenständige Planung ohne Über- oder Unterplan.'],
-                                ];
-                                $mr = $roleMeta[$selfRole];
-                            @endphp
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold {{ $mr[2] }}" title="{{ $mr[3] }}">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold {{ $mr[2] }} {{ $mr[3] }}" title="{{ $mr[4] }}">
                                 @svg($mr[1],'w-3 h-3') {{ $mr[0] }}
                             </span>
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">
@@ -96,11 +102,11 @@
                         @php
                             $explain = match($selfRole) {
                                 'master' => $subMasterCount > 0
-                                    ? "Fasst {$subMasterCount} Unter-Master mit zusammen {$leafCount} Instanzen zu einem Gesamtbild zusammen — die Zahlen unten sind ihre Summe."
+                                    ? "Fasst {$subMasterCount} Master mit zusammen {$leafCount} Instanzen zu einem Gesamtbild zusammen — die Zahlen unten sind ihre Summe."
                                     : "Fasst {$childCount} Instanzen zu einem Gesamtbild zusammen — die Zahlen unten sind ihre Summe.",
                                 'instance' => $parentPlan
-                                    ? "Teil der Gesamtplanung „{$parentPlan->name}\" — läuft dort mit ein."
-                                    : "Instanz einer Konsolidierung.",
+                                    ? "Läuft ein in den Master „{$parentPlan->name}\" — wird dort mitgezählt."
+                                    : "Instanz — läuft in einen Master ein.",
                                 'detail' => count($usedIn)
                                     ? "Speist per Drill-down eine Zeile in „".implode('“, „', $usedIn)."\"."
                                     : "Detailplan — als Drill-down-Quelle vorgesehen.",
@@ -479,8 +485,8 @@
                 {{-- Legende: was die Icons bedeuten --}}
                 <div class="pt-3 border-t border-[var(--ui-border)]/40 space-y-1.5 text-[10px] text-[var(--ui-muted)]">
                     <div class="flex items-center gap-1.5">@svg('heroicon-o-square-3-stack-3d','w-3 h-3 text-indigo-500') Master — konsolidiert Instanzen</div>
-                    <div class="flex items-center gap-1.5">@svg('heroicon-o-cube','w-3 h-3 text-emerald-500') Instanz — Teil eines Masters</div>
-                    <div class="flex items-center gap-1.5">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3 text-amber-500') Detailplan / Drill-down einer Zeile</div>
+                    <div class="flex items-center gap-1.5">@svg('heroicon-o-cube','w-3 h-3 text-emerald-500') Instanz — läuft in einen Master ein</div>
+                    <div class="flex items-center gap-1.5">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3 text-amber-500') Detailplan — speist eine Zeile (Drill-down)</div>
                     <div class="flex items-center gap-1.5">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-[var(--ui-primary)]/60') Zelle hat feineres Detail — reinzoomen</div>
                     <div class="flex items-center gap-1.5">@svg('heroicon-o-exclamation-triangle','w-3 h-3 text-amber-500') nur teilweise Detail — Kennzahl unvollständig</div>
                 </div>

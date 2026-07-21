@@ -44,10 +44,11 @@
                 'detail' => ['heroicon-o-magnifying-glass-plus', 'text-amber-500'],
                 default => ['heroicon-o-chart-bar-square', 'text-[var(--ui-primary)]'],
             };
+            // Nur Einstiegspunkte: Master + Einzelpläne. Detailpläne erreicht man per
+            // Drill-down (🔍) aus dem Plan, der sie nutzt — ohne Kontext sind sie hier nutzlos.
             $groups = [
-                ['Konsolidierungen', $roots->filter(fn ($r) => ($planRole[$r->id] ?? '') === 'master')],
+                ['Master', $roots->filter(fn ($r) => ($planRole[$r->id] ?? '') === 'master')],
                 ['Einzelpläne', $roots->filter(fn ($r) => in_array($planRole[$r->id] ?? 'single', ['single', 'instance'], true))],
-                ['Detailpläne', $roots->filter(fn ($r) => ($planRole[$r->id] ?? '') === 'detail')],
             ];
         @endphp
         @if($roots->isEmpty())

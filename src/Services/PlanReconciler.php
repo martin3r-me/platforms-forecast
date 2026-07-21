@@ -69,6 +69,7 @@ final class PlanReconciler
                 'sourceCount' => count($samePlanKeys) + count($refPlans),
                 'signMode' => Aggregation::signMode($isFormula, $agg),
                 'aggLabel' => $isFormula ? Aggregation::label($agg) : null,
+                'warnings' => [],
             ];
         }
 
@@ -110,6 +111,16 @@ final class PlanReconciler
                 if ($rowInfo[$row->key]['isFormula']) {
                     continue;
                 }
+
+                // Einheiten-/Richtungs-Check: inkompatibles Kind NICHT aufsummieren, warnen
+                $ci = $cv['rowInfo'][$row->key] ?? null;
+                if ($ci && ($ci['unit'] !== $rowInfo[$row->key]['unit'] || $ci['direction'] !== $rowInfo[$row->key]['direction'])) {
+                    $rowInfo[$row->key]['warnings'][] = $ci['unit'] !== $rowInfo[$row->key]['unit']
+                        ? "{$child->name}: Einheit ".($ci['unit'] ?? '—')." ≠ ".($rowInfo[$row->key]['unit'] ?? '—')
+                        : "{$child->name}: Richtung {$ci['direction']} ≠ {$rowInfo[$row->key]['direction']}";
+                    continue;
+                }
+
                 $cells = $rows[$row->key]['cells'];
                 foreach (($cv['rows'][$row->key]['cells'] ?? []) as $b => $c) {
                     if (! isset($cells[$b])) {

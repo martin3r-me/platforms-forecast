@@ -29,6 +29,9 @@ class PlanView extends Component
     /** Herkunfts-Plan-uuid (für den "Zurück"-Link nach einem Drill-Klick). */
     public ?string $from = null;
 
+    /** Anteils-Ansicht: zeigt je Summen-Block den prozentualen Anteil jeder Zeile. */
+    public bool $showShare = false;
+
     public function mount(string $uuid): void
     {
         $this->uuid = $uuid;
@@ -40,6 +43,11 @@ class PlanView extends Component
     public function zoom(string $bucket): void
     {
         $this->container = $bucket;
+    }
+
+    public function toggleShare(): void
+    {
+        $this->showShare = ! $this->showShare;
     }
 
     protected function plan(): ForecastPlan
@@ -162,6 +170,26 @@ class PlanView extends Component
             $meta[$rk] = ['value' => $sv, 'committed' => $sv, 'rest' => 0.0, 'implied' => false, 'spread' => 0.0, 'cellCommitted' => []];
         }
 
+        // Anteils-Verteilung: je Summen-Block der prozentuale Anteil jeder Mitglied-Zeile
+        // pro Spalte (Zusammensetzung; bei einer Summe ergeben die Teile immer 100 %).
+        $share = [];
+        foreach ($rows as $sk => $r) {
+            if (! ($rowInfo[$sk]['isFormula'] ?? false) || ($rowInfo[$sk]['agg'] ?? '') !== 'sum') {
+                continue;
+            }
+            foreach ($columns as $col) {
+                $b = $col['bucket'];
+                $total = $formulaCells[$sk][$b] ?? ($r['cells'][$b]['value'] ?? 0);
+                if ($total == 0) {
+                    continue;
+                }
+                foreach ($rowInfo[$sk]['sources'] as $m) {
+                    $mv = $rows[$m]['cells'][$b]['value'] ?? 0;
+                    $share[$m][$b] = $mv / $total * 100;
+                }
+            }
+        }
+
         // Zeit-Sperre aus entkoppelter Policy (Plan-Policy → Team-Default → Legacy → Code-Default)
         $policy = $plan->lockPolicy ?? ForecastLockPolicy::resolveDefault($plan->team_id);
         $lock = array_merge(
@@ -187,6 +215,8 @@ class PlanView extends Component
             'parentPlan' => $parentPlan,
             'childPlans' => $childPlans,
             'fromPlan' => $fromPlan,
+            'share' => $share,
+            'showShare' => $this->showShare,
             'plan' => $plan,
             'rows' => $rows,
             'columns' => $columns,

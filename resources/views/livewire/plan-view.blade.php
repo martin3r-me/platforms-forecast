@@ -178,7 +178,14 @@
             {{-- ═══════════ Grid ═══════════ --}}
             <div class="rounded-2xl border border-[var(--ui-border)]/60 bg-[var(--ui-surface)] overflow-hidden">
                 <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-[var(--ui-border)]/50 bg-[var(--ui-muted-5)]">
-                    <div class="text-sm font-medium text-[var(--ui-secondary)]">{{ $scopeCaption }}</div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm font-medium text-[var(--ui-secondary)]">{{ $scopeCaption }}</span>
+                        <button type="button" wire:click="toggleShare"
+                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors
+                                {{ $showShare ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium' : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)]' }}">
+                            @svg('heroicon-o-chart-pie','w-3.5 h-3.5') Anteil %
+                        </button>
+                    </div>
                     <div class="flex items-center gap-3 text-[11px] text-[var(--ui-muted)]">
                         <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-emerald-500/15 text-emerald-600">+</span> Plus</span>
                         <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-primary)]/15 text-[var(--ui-primary)]">V</span> Verteilen</span>
@@ -230,6 +237,9 @@
                                         <div class="flex items-center gap-1.5">
                                             @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span>@endif
                                             <span class="font-medium text-[var(--ui-secondary)]">{{ $row['label'] }}</span>
+                                            @if(!empty($rowInfo[$rowKey]['warnings']))
+                                                <span class="text-amber-600" title="Konsolidierung ausgelassen — {{ implode(' · ', $rowInfo[$rowKey]['warnings']) }}">@svg('heroicon-o-exclamation-triangle','w-3.5 h-3.5')</span>
+                                            @endif
                                             @php $refPlans = $rowInfo[$rowKey]['refPlans'] ?? []; @endphp
                                             @if(!empty($refPlans) && ($refPlans[0]['uuid'] ?? null))
                                                 <a href="{{ route('forecast.plans.show', ['uuid' => $refPlans[0]['uuid'], 'from' => $plan->uuid]) }}" wire:navigate
@@ -308,6 +318,9 @@
                                                         <span class="text-[var(--ui-muted)]/40">·</span>
                                                     @endif
                                                 @endif
+                                            @endif
+                                            @if($showShare && isset($share[$rowKey][$col['bucket']]))
+                                                <div class="mt-0.5 text-[10px] font-medium text-[var(--ui-primary)]">{{ number_format($share[$rowKey][$col['bucket']], 0, ',', '.') }} % Anteil</div>
                                             @endif
                                         </td>
                                     @endforeach

@@ -96,6 +96,7 @@ class PlanView extends Component
         $columns = $this->columns($plan);
         $level = $this->childLevel($this->container);
         $breadcrumb = $this->breadcrumb();
+        $levelNav = $this->levelNav($breadcrumb, $level);
 
         // Roh-Eingaben je Zeile (für "verbindlich verplant"-Berechnung)
         $entriesByRow = [];
@@ -529,6 +530,7 @@ class PlanView extends Component
             'rowInfo' => $rowInfo,
             'formulaCells' => $formulaCells,
             'breadcrumb' => $breadcrumb,
+            'levelNav' => $levelNav,
             'zoomed' => $this->container !== '',
             'canZoom' => $level !== 'hour',
             'lock' => $lock,
@@ -751,6 +753,35 @@ class PlanView extends Component
         sort($set);
 
         return $set;
+    }
+
+    /**
+     * Ebenen-Leiste für die Tabellen-Kopfzeile: je Zeit-Ebene der Ziel-Bucket zum
+     * direkten Springen + Zustand. Jeder Breadcrumb-Container zeigt als Spalten die
+     * Ebene childLevel(container) — daraus ergibt sich, welche Ebene wohin zoomt.
+     *
+     * @param  list<array{bucket:string,label:string}>  $breadcrumb
+     * @return list<array{level:string,label:string,bucket:?string,state:string}>
+     */
+    protected function levelNav(array $breadcrumb, string $currentLevel): array
+    {
+        $levelBucket = [];
+        foreach ($breadcrumb as $crumb) {
+            $levelBucket[$this->childLevel($crumb['bucket'])] = $crumb['bucket'];
+        }
+
+        $nav = [];
+        foreach (['year', 'quarter', 'month', 'day', 'hour'] as $lvl) {
+            $nav[] = [
+                'level' => $lvl,
+                'label' => $this->levelLabelDe($lvl),
+                'bucket' => $levelBucket[$lvl] ?? null,   // null = nur per Spalten-Klick erreichbar (tiefer als jetzt)
+                'state' => $lvl === $currentLevel ? 'current'
+                    : (isset($levelBucket[$lvl]) ? 'done' : 'ahead'),
+            ];
+        }
+
+        return $nav;
     }
 
     /** @return list<array{bucket:string,label:string}> */

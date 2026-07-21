@@ -126,41 +126,6 @@
                             <span>{{ $explain }}</span>
                         </p>
                     </div>
-
-                    <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--ui-muted-5)] border border-[var(--ui-border)]/50">
-                        <span class="text-[10px] font-medium uppercase tracking-wider text-[var(--ui-muted)]">Ebene</span>
-                        @foreach(['Jahr','Quartal','Monat','Tag','Stunde'] as $lvl)
-                            <span class="text-xs font-semibold px-2 py-0.5 rounded-md
-                                {{ $levelLabel === $lvl ? 'bg-[var(--ui-primary)] text-[var(--ui-on-primary)]' : 'text-[var(--ui-muted)]' }}">
-                                {{ $lvl }}
-                            </span>
-                        @endforeach
-                    </div>
-                </div>
-
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <nav class="flex items-center gap-1 flex-wrap">
-                        @foreach($breadcrumb as $i => $crumb)
-                            @if($i > 0)
-                                @svg('heroicon-o-chevron-right','w-3.5 h-3.5 text-[var(--ui-muted)]/60')
-                            @endif
-                            <button type="button" wire:click="zoom('{{ $crumb['bucket'] }}')"
-                                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-sm transition-colors
-                                    {{ $loop->last
-                                        ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-semibold ring-1 ring-[var(--ui-primary)]/20'
-                                        : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)] hover:text-[var(--ui-secondary)]' }}">
-                                @if($i === 0)@svg('heroicon-o-calendar-days','w-3.5 h-3.5')@endif
-                                {{ $crumb['label'] }}
-                            </button>
-                        @endforeach
-                    </nav>
-
-                    <div class="flex items-center gap-1.5 text-sm text-[var(--ui-muted)]">
-                        <span class="text-[var(--ui-secondary)] font-medium">{{ $scopeCaption }}</span>
-                        @if($canZoom)
-                            <span class="inline-flex items-center gap-1 text-xs">· @svg('heroicon-o-cursor-arrow-rays','w-3.5 h-3.5') Spalte anklicken zum Reinzoomen</span>
-                        @endif
-                    </div>
                 </div>
             </div>
 
@@ -229,29 +194,71 @@
 
             {{-- ═══════════ Grid ═══════════ --}}
             <div class="rounded-2xl border border-[var(--ui-border)]/60 bg-[var(--ui-surface)] overflow-hidden">
-                <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-[var(--ui-border)]/50 bg-[var(--ui-muted-5)]">
-                    <div class="flex items-center gap-3">
-                        <span class="text-sm font-medium text-[var(--ui-secondary)]">{{ $scopeCaption }}</span>
-                        <button type="button" wire:click="toggleShare"
-                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors
-                                {{ $showShare ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium' : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)]' }}">
-                            @svg('heroicon-o-chart-pie','w-3.5 h-3.5') Anteil %
-                        </button>
-                        <button type="button" wire:click="toggleDelta"
-                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors
-                                {{ $showDelta ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium' : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)]' }}">
-                            @svg('heroicon-o-arrow-trending-up','w-3.5 h-3.5') Δ Vorperiode
-                        </button>
+                {{-- ═══ Kopf-Leiste der Tabelle = Steuerzentrale (liegt über der Scroll-Box, also immer sichtbar) ═══ --}}
+                <div class="border-b border-[var(--ui-border)]/50 bg-[var(--ui-muted-5)]">
+                    {{-- Tier 1: Zeit-Navigation der Tabelle — Zoom-Pfad (raus) links, Ebenen-Sprung rechts --}}
+                    <div class="flex flex-wrap items-center justify-between gap-3 px-4 pt-2.5 pb-1.5">
+                        <nav class="flex items-center gap-0.5 flex-wrap min-w-0" aria-label="Zeit-Navigation">
+                            @foreach($breadcrumb as $i => $crumb)
+                                @if($i > 0)@svg('heroicon-o-chevron-right','w-3.5 h-3.5 text-[var(--ui-muted)]/50 shrink-0')@endif
+                                <button type="button" wire:click="zoom('{{ $crumb['bucket'] }}')"
+                                    class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition-colors
+                                        {{ $loop->last
+                                            ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-semibold ring-1 ring-[var(--ui-primary)]/20'
+                                            : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)] hover:text-[var(--ui-secondary)]' }}"
+                                    @unless($loop->last) title="Zurück zu „{{ $crumb['label'] }}“" @endunless>
+                                    @if($i === 0)@svg('heroicon-o-calendar-days','w-3.5 h-3.5')@endif
+                                    {{ $crumb['label'] }}
+                                </button>
+                            @endforeach
+                        </nav>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <span class="text-[10px] font-medium uppercase tracking-wider text-[var(--ui-muted)] mr-0.5">Ebene</span>
+                            @foreach($levelNav as $ln)
+                                @if($ln['state'] === 'ahead')
+                                    <span class="text-xs font-medium px-2 py-1 rounded-md text-[var(--ui-muted)]/35 cursor-default"
+                                        title="Tiefer als die aktuelle Ansicht — Spalte anklicken zum Reinzoomen">{{ $ln['label'] }}</span>
+                                @else
+                                    <button type="button" wire:click="zoom('{{ $ln['bucket'] }}')"
+                                        class="text-xs font-semibold px-2 py-1 rounded-md transition-colors
+                                            {{ $ln['state'] === 'current'
+                                                ? 'bg-[var(--ui-primary)] text-[var(--ui-on-primary)]'
+                                                : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)] hover:text-[var(--ui-secondary)]' }}"
+                                        @if($ln['state'] === 'done') title="Zur Ebene {{ $ln['label'] }} rauszoomen" @endif>
+                                        {{ $ln['label'] }}
+                                    </button>
+                                @endif
+                            @endforeach
+                        </div>
                     </div>
-                    <div class="flex items-center gap-3 text-[11px] text-[var(--ui-muted)]">
-                        <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-emerald-500/15 text-emerald-600">+</span> Plus</span>
-                        <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-primary)]/15 text-[var(--ui-primary)]">V</span> Verteilen</span>
-                        <span class="inline-flex items-center gap-1 italic">≈ verteilter Rest</span>
-                        <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span> berechnet</span>
+                    {{-- Tier 2: Anzeige-Optionen + Legende --}}
+                    <div class="flex flex-wrap items-center justify-between gap-2 px-4 pb-2.5">
+                        <div class="flex items-center gap-2">
+                            @if($canZoom)
+                                <span class="inline-flex items-center gap-1 text-[11px] text-[var(--ui-muted)]" title="Auf einen Spaltenkopf klicken, um in diese Periode zu zoomen">@svg('heroicon-o-cursor-arrow-rays','w-3.5 h-3.5') Spalte anklicken = rein</span>
+                                <span class="text-[var(--ui-muted)]/30">·</span>
+                            @endif
+                            <button type="button" wire:click="toggleShare"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors
+                                    {{ $showShare ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium' : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)]' }}">
+                                @svg('heroicon-o-chart-pie','w-3.5 h-3.5') Anteil %
+                            </button>
+                            <button type="button" wire:click="toggleDelta"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors
+                                    {{ $showDelta ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium' : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)]' }}">
+                                @svg('heroicon-o-arrow-trending-up','w-3.5 h-3.5') Δ Vorperiode
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-3 text-[11px] text-[var(--ui-muted)]">
+                            <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-emerald-500/15 text-emerald-600">+</span> Plus</span>
+                            <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-primary)]/15 text-[var(--ui-primary)]">V</span> Verteilen</span>
+                            <span class="inline-flex items-center gap-1 italic">≈ verteilter Rest</span>
+                            <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span> berechnet</span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="overflow-auto max-h-[72vh] rounded-lg ring-1 ring-[var(--ui-border)]/40">
+                <div class="overflow-auto max-h-[72vh]">
                     <table class="min-w-full border-separate border-spacing-0 text-sm">
                         <thead>
                             <tr>

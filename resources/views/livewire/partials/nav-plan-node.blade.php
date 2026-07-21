@@ -27,6 +27,9 @@
    @if($isCurrent) aria-current="page" @endif>
     @svg($icon, 'w-3.5 h-3.5 shrink-0 '.($isCurrent ? '' : 'opacity-70'))
     <span class="truncate text-sm">{{ $node->name }}</span>
+    @if(in_array($node->id, $drillConsumerIds ?? [], true))
+        <span class="shrink-0 text-amber-500" title="hat einen Drill-down auf einen Detailplan">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3')</span>
+    @endif
     @if($kids->count())
         <span class="ml-auto text-[9px] font-medium text-[var(--ui-muted)]/60 shrink-0">{{ $kids->count() }}</span>
     @endif
@@ -41,5 +44,6 @@
         'childrenByParent' => $childrenByParent,
         'planRole' => $planRole,
         'componentSet' => $componentSet ?? [],
+        'drillConsumerIds' => $drillConsumerIds ?? [],
     ])
 @endforeach

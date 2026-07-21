@@ -252,9 +252,9 @@
                                             @php $refPlans = $rowInfo[$rowKey]['refPlans'] ?? []; @endphp
                                             @if(!empty($refPlans) && ($refPlans[0]['uuid'] ?? null))
                                                 <a href="{{ route('forecast.plans.show', ['uuid' => $refPlans[0]['uuid'], 'from' => $plan->uuid]) }}" wire:navigate
-                                                   class="inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--ui-primary)] hover:underline px-1 py-0.5 rounded hover:bg-[var(--ui-primary)]/10"
-                                                   title="Detailplan öffnen: {{ $refPlans[0]['name'] }}{{ count($refPlans) > 1 ? ' (+'.(count($refPlans)-1).' weitere)' : '' }}">
-                                                    @svg('heroicon-o-arrow-top-right-on-square','w-3 h-3') Detail
+                                                   class="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-600 bg-amber-500/10 hover:bg-amber-500/20 px-1.5 py-0.5 rounded"
+                                                   title="Drill-down: Wert kommt aus Detailplan „{{ $refPlans[0]['name'] }}"{{ count($refPlans) > 1 ? ' (+'.(count($refPlans)-1).' weitere)' : '' }} — öffnen">
+                                                    @svg('heroicon-o-magnifying-glass-plus','w-3 h-3') Detailplan
                                                 </a>
                                             @endif
                                         </div>
@@ -284,12 +284,22 @@
 
                                     {{-- Spalten --}}
                                     @foreach($columns as $col)
-                                        <td class="text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top group-hover/row:bg-[var(--ui-muted-5)]/60 transition-colors {{ (($colStatus[$col['bucket']]['state'] ?? '') === 'closed') ? 'opacity-45' : '' }}">
+                                        <td class="relative text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top group-hover/row:bg-[var(--ui-muted-5)]/60 transition-colors {{ (($colStatus[$col['bucket']]['state'] ?? '') === 'closed') ? 'opacity-45' : '' }}">
+                                            @if(($timeDetail[$rowKey][$col['bucket']] ?? false) && $canZoom)
+                                                <span class="absolute top-1 left-1.5 text-[var(--ui-primary)]/45 group-hover/row:text-[var(--ui-primary)]/70 transition-colors" title="Enthält feineres Detail — Spalte anklicken zum Reinzoomen">
+                                                    @svg('heroicon-o-bars-arrow-down','w-3 h-3')
+                                                </span>
+                                            @endif
+                                            @if($partial[$rowKey][$col['bucket']] ?? false)
+                                                <span class="absolute top-1 right-1.5 text-amber-500" title="Nur teilweise Detail auf dieser Ebene — nicht alle Bestandteile sind hier aufgeschlüsselt, die Kennzahl ist unvollständig">
+                                                    @svg('heroicon-o-exclamation-triangle','w-3 h-3')
+                                                </span>
+                                            @endif
                                             @if($isF)
                                                 {{-- Formula: berechnet, read-only --}}
                                                 @php $fv = $formulaCells[$rowKey][$col['bucket']] ?? 0; @endphp
                                                 @if($fv != 0)
-                                                    <span class="tabular-nums {{ $toneOf($rowKey, $fv) }}">{{ $signOf($rowKey, $fv) }}{{ $fmtRow($rowKey, $magOf($rowKey, $fv)) }}<span class="text-[10px] text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
+                                                    <span class="tabular-nums {{ $toneOf($rowKey, $fv) }} {{ ($partial[$rowKey][$col['bucket']] ?? false) ? 'italic opacity-50' : '' }}">{{ $signOf($rowKey, $fv) }}{{ $fmtRow($rowKey, $magOf($rowKey, $fv)) }}<span class="text-[10px] text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
                                                 @else
                                                     <span class="text-[var(--ui-muted)]/40">·</span>
                                                 @endif
@@ -396,6 +406,7 @@
                                     'childrenByParent' => $childrenByParent,
                                     'planRole' => $planRole,
                                     'componentSet' => $componentSet,
+                                    'drillConsumerIds' => $drillConsumerIds,
                                 ])
                             @endforeach
                         </div>
@@ -445,7 +456,9 @@
                 <div class="pt-3 border-t border-[var(--ui-border)]/40 space-y-1.5 text-[10px] text-[var(--ui-muted)]">
                     <div class="flex items-center gap-1.5">@svg('heroicon-o-square-3-stack-3d','w-3 h-3 text-indigo-500') Master — konsolidiert Instanzen</div>
                     <div class="flex items-center gap-1.5">@svg('heroicon-o-cube','w-3 h-3 text-emerald-500') Instanz — Teil eines Masters</div>
-                    <div class="flex items-center gap-1.5">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3 text-amber-500') Detailplan — Drill-down einer Zeile</div>
+                    <div class="flex items-center gap-1.5">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3 text-amber-500') Detailplan / Drill-down einer Zeile</div>
+                    <div class="flex items-center gap-1.5">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-[var(--ui-primary)]/60') Zelle hat feineres Detail — reinzoomen</div>
+                    <div class="flex items-center gap-1.5">@svg('heroicon-o-exclamation-triangle','w-3 h-3 text-amber-500') nur teilweise Detail — Kennzahl unvollständig</div>
                 </div>
             </div>
         </x-ui-page-sidebar>

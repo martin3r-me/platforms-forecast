@@ -240,6 +240,53 @@ class PlanView extends Component
             }
         }
 
+        // „Hat feineres Detail"-Marker je Zelle: existiert eine gespeicherte Zelle auf einer
+        // feineren Ebene innerhalb dieser Spalte? (echtes Detail, nicht nur verteilter Rest)
+        $timeDetail = [];
+        foreach ($rows as $rk => $r) {
+            $keys = array_keys($r['cells']);
+            foreach ($columns as $col) {
+                $b = $col['bucket'];
+                $has = false;
+                foreach ($keys as $k) {
+                    if ($this->isDescendant($k, $b)) {
+                        $has = true;
+                        break;
+                    }
+                }
+                $timeDetail[$rk][$b] = $has;
+            }
+        }
+
+        // „Nur teilweise Detail"-Warnung je Formel-Zelle: auf einer feineren Ebene haben
+        // manche Bestandteile eine Zelle, andere (nur Jahr erfasst) nicht → Kennzahl unvollständig.
+        $partial = [];
+        foreach ($rows as $rk => $r) {
+            if (! ($rowInfo[$rk]['isFormula'] ?? false)) {
+                continue;
+            }
+            $srcs = $rowInfo[$rk]['sources'] ?? [];
+            if (count($srcs) < 2) {
+                continue;
+            }
+            foreach ($columns as $col) {
+                $b = $col['bucket'];
+                if (TimeLevel::fromKey($b) === TimeLevel::Year) {
+                    continue; // Jahr gilt als vollständig
+                }
+                $present = 0;
+                $absent = 0;
+                foreach ($srcs as $s) {
+                    if (isset($rows[$s]['cells'][$b]) && ($rows[$s]['cells'][$b]['value'] ?? 0) != 0) {
+                        $present++;
+                    } else {
+                        $absent++;
+                    }
+                }
+                $partial[$rk][$b] = $present > 0 && $absent > 0;
+            }
+        }
+
         // Zeit-Sperre aus entkoppelter Policy (Plan-Policy → Team-Default → Legacy → Code-Default)
         $policy = $plan->lockPolicy ?? ForecastLockPolicy::resolveDefault($plan->team_id);
         $lock = array_merge(
@@ -303,6 +350,7 @@ class PlanView extends Component
             }
         }
         $plansByType = $allPlans->groupBy('plan_type_id');
+        $drillConsumerIds = []; // Pläne, die einen Drill-down HABEN (eine Zeile aus Detailplan)
         foreach (DB::table('forecast_row_sources as rs')
             ->join('forecast_rows as r', 'r.id', '=', 'rs.row_id')
             ->whereNotNull('rs.source_plan_id')
@@ -313,9 +361,11 @@ class PlanView extends Component
             }
             if ($e->plan_id && in_array((int) $e->plan_id, $planIds, true)) {
                 $addEdge((int) $e->plan_id, $detailId);
+                $drillConsumerIds[(int) $e->plan_id] = true;
             } elseif ($e->plan_type_id) {
                 foreach (($plansByType[$e->plan_type_id] ?? []) as $cp) {
                     $addEdge($cp->id, $detailId);
+                    $drillConsumerIds[$cp->id] = true;
                 }
             }
         }
@@ -363,9 +413,12 @@ class PlanView extends Component
             'childrenByParent' => $childrenByParent,
             'componentSet' => $componentSet,
             'planRole' => $planRole,
+            'drillConsumerIds' => array_keys($drillConsumerIds),
             'ancestorIds' => $ancestorIds,
             'isMaster' => $isMaster,
             'childCount' => $childCount,
+            'timeDetail' => $timeDetail,
+            'partial' => $partial,
             'delta' => $delta,
             'showDelta' => $this->showDelta,
             'share' => $share,

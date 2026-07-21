@@ -63,6 +63,9 @@ final class PlanReconciler
                 'isFormula' => $isFormula,
                 'direction' => $dir,
                 'unit' => $row->unit?->symbol,
+                'unitCode' => $row->unit?->code,
+                'isFactor' => $row->unit?->code === 'FAKTOR',
+                'nonAdditive' => $row->unit?->dimension === 'ratio',
                 'section' => $row->config['section'] ?? null,
                 'quoteBasis' => $row->config['quote_basis'] ?? null,
                 'agg' => $agg,
@@ -110,7 +113,9 @@ final class PlanReconciler
         foreach ($children as $child) {
             $cv = $this->compute($child, $visiting);
             foreach ($resolved as $row) {
-                if ($rowInfo[$row->key]['isFormula']) {
+                // Formel-Zeilen werden neu gerechnet; ratio-Zeilen (Faktoren/Quoten) sind
+                // NICHT additiv (0,3 + 0,3 ≠ 0,6) → am Ordner nicht aufsummieren, leer lassen.
+                if ($rowInfo[$row->key]['isFormula'] || ($rowInfo[$row->key]['nonAdditive'] ?? false)) {
                     continue;
                 }
 

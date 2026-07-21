@@ -34,9 +34,13 @@
         }
         return $eff > 0 ? 'text-emerald-600' : ($eff < 0 ? 'text-rose-600' : 'text-[var(--ui-muted)]/60');
     };
-    // %-Zeilen mit 1 Nachkommastelle, sonst ganzzahlig
+    // FAKTOR: gespeichert 0–1, angezeigt ×100 als %. %-Zeilen 1 Nachkommastelle, sonst ganzzahlig.
     $fmtRow = function ($rk, $v) use ($rowInfo, $fmt) {
-        return ($rowInfo[$rk]['unit'] ?? '') === '%' ? number_format((float) $v, 1, ',', '.') : $fmt($v);
+        $info = $rowInfo[$rk] ?? [];
+        if ($info['isFactor'] ?? false) {
+            return number_format((float) $v * 100, 1, ',', '.');
+        }
+        return ($info['unit'] ?? '') === '%' ? number_format((float) $v, 1, ',', '.') : $fmt($v);
     };
     // Ordner-Modell: eine Planung BÜNDELT untergeordnete (= Ordner) ODER erfasst Zahlen (= Blatt).
     // Ordner/Blatt ist blickpunkt-unabhängig (ein Ordner bleibt Ordner, egal von wo man draufschaut).

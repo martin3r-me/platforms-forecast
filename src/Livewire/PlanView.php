@@ -144,7 +144,13 @@ class PlanView extends Component
                     }
                 }
                 $distribute = max(0, $value - $storedSum);
-                if ($distribute > 0 && $emptyBuckets) {
+                if ($rowInfo[$rk]['nonAdditive'] ?? false) {
+                    // Faktor/Quote ist nicht teilbar → konstant in jeder leeren feineren Periode.
+                    foreach ($emptyBuckets as $b) {
+                        $spreadBy[$b] = round($value, 6);
+                    }
+                } elseif ($distribute > 0 && $emptyBuckets) {
+                    // Geld: gewichtet nach Verteilungsschlüssel.
                     $wsum = 0.0;
                     foreach ($emptyBuckets as $b) {
                         $wsum += $distPolicy->weightForBucket($b);
@@ -175,12 +181,13 @@ class PlanView extends Component
             ];
         }
 
-        // Master: konsolidierte Eingabe-Zeilen voll „verbindlich" (kein offener Rest, keine ≈-Verteilung)
+        // Master: konsolidierte Eingabe-Zeilen voll „verbindlich" (kein offener Rest).
+        // spreadBy bleibt erhalten → der Jahreswert verteilt sich auch am Ordner nach unten
+        // (Geld gewichtet, Faktor konstant), genau wie am Blatt.
         if ($isMaster) {
             foreach ($meta as $rk => &$m) {
                 $m['committed'] = $m['value'];
                 $m['rest'] = 0.0;
-                $m['spreadBy'] = [];
                 $m['cellCommitted'] = [];
             }
             unset($m);
@@ -203,8 +210,14 @@ class PlanView extends Component
                 if (isset($r['cells'][$b])) {
                     $cells[$b] = $r['cells'][$b]['value'];                      // systemseitig reconciled
                 } else {
-                    $vals = array_map(fn ($s) => $meta[$s]['spreadBy'][$b] ?? 0.0, $sources);
-                    $cells[$b] = Aggregation::aggregate($agg, $vals, $dirs);    // verteilter Rest
+                    // Verteilter Feinwert: Formel-Quelle → ihr berechneter Feinwert; Eingabe-Quelle → ihr spreadBy.
+                    $vals = [];
+                    foreach ($sources as $s) {
+                        $vals[] = ($rowInfo[$s]['isFormula'] ?? false)
+                            ? ($formulaCells[$s][$b] ?? 0.0)
+                            : ($meta[$s]['spreadBy'][$b] ?? 0.0);
+                    }
+                    $cells[$b] = Aggregation::aggregate($agg, $vals, $dirs);
                 }
             }
             $formulaCells[$rk] = $cells;

@@ -320,7 +320,7 @@
                                                 @endif
                                             @endif
                                             @if($showShare && isset($share[$rowKey][$col['bucket']]))
-                                                <div class="mt-0.5 text-[10px] font-medium text-[var(--ui-primary)]">{{ number_format($share[$rowKey][$col['bucket']], 0, ',', '.') }} % Anteil</div>
+                                                <div class="mt-0.5 text-[10px] font-medium text-[var(--ui-primary)]">{{ number_format($share[$rowKey][$col['bucket']], 1, ',', '.') }} % Anteil</div>
                                             @endif
                                         </td>
                                     @endforeach

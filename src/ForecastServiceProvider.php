@@ -219,8 +219,13 @@ class ForecastServiceProvider extends ServiceProvider
             $registry->register(new \Platform\Forecast\Tools\DeletePlanTypeTool());
             $registry->register(new \Platform\Forecast\Tools\ListPlanTypesTool());
             $registry->register(new \Platform\Forecast\Tools\CreatePlanTool());
+            $registry->register(new \Platform\Forecast\Tools\UpdatePlanTool());
             $registry->register(new \Platform\Forecast\Tools\DeletePlanTool());
             $registry->register(new \Platform\Forecast\Tools\GetPlanTool());
+            $registry->register(new \Platform\Forecast\Tools\ListDistributionPoliciesTool());
+            $registry->register(new \Platform\Forecast\Tools\CreateDistributionPolicyTool());
+            $registry->register(new \Platform\Forecast\Tools\UpdateDistributionPolicyTool());
+            $registry->register(new \Platform\Forecast\Tools\DeleteDistributionPolicyTool());
             $registry->register(new \Platform\Forecast\Tools\SetCellTool());
             $registry->register(new \Platform\Forecast\Tools\ClearCellTool());
             $registry->register(new \Platform\Forecast\Tools\RollupTool());

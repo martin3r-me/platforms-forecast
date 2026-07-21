@@ -63,6 +63,7 @@ final class PlanReconciler
                 'isFormula' => $isFormula,
                 'direction' => $dir,
                 'unit' => $row->unit?->symbol,
+                'section' => $row->config['section'] ?? null,
                 'agg' => $agg,
                 'sources' => $samePlanKeys,
                 'refPlans' => $refPlans,

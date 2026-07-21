@@ -197,6 +197,12 @@ final class PlanService
         $kind = $r['kind'] ?? 'input';
         $agg = $kind === 'formula' ? ($r['config']['agg'] ?? $r['agg'] ?? 'sum') : null;
 
+        // Optionale Sektion (Zeilen-Gruppe) wandert in die config — keine Migration nötig.
+        $config = $r['config'] ?? null;
+        if (! empty($r['section'])) {
+            $config = array_merge((array) $config, ['section' => (string) $r['section']]);
+        }
+
         return array_merge($parent, [
             'team_id' => $teamId,
             'key' => $r['key'],
@@ -205,7 +211,7 @@ final class PlanService
             'agg' => $agg,
             'unit_id' => $unitId,
             'direction' => $r['direction'] ?? 'neutral',
-            'config' => $r['config'] ?? null,
+            'config' => $config,
             'order' => $r['order'] ?? $i,
         ]);
     }

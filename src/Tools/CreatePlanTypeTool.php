@@ -48,6 +48,7 @@ class CreatePlanTypeTool implements ToolContract, ToolMetadataContract
                             'kind' => ['type' => 'string', 'enum' => ['input', 'formula', 'sum', 'percent', 'reference']],
                             'unit' => ['type' => 'string', 'description' => 'Einheit-Code: EUR, KEUR, H, MIN, FTE, PCS, PCT.'],
                             'direction' => ['type' => 'string', 'enum' => ['income', 'expense', 'neutral']],
+                            'section' => ['type' => 'string', 'description' => 'Optionale Sektion (Zeilen-Gruppe), z. B. "Umsatzerlöse". Aufeinanderfolgende Zeilen gleicher Sektion werden gruppiert.'],
                             'config' => ['type' => 'object', 'description' => 'Bei formula: {agg, sources}.'],
                             'order' => ['type' => 'integer'],
                         ],

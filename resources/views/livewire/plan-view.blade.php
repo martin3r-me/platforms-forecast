@@ -272,8 +272,20 @@
                             </tr>
                         </thead>
                         <tbody>
+                            @php $lastSection = '__init__'; @endphp
                             @foreach($rows as $rowKey => $row)
-                                @php $isF = $rowInfo[$rowKey]['isFormula'] ?? false; @endphp
+                                @php
+                                    $isF = $rowInfo[$rowKey]['isFormula'] ?? false;
+                                    $sec = $rowInfo[$rowKey]['section'] ?? null;
+                                @endphp
+                                @if($sec && $sec !== $lastSection)
+                                    <tr>
+                                        <td colspan="99" class="sticky left-0 bg-[var(--ui-muted-10)]/60 px-4 py-1.5 border-y border-[var(--ui-border)]/50">
+                                            <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--ui-muted)]">{{ $sec }}</span>
+                                        </td>
+                                    </tr>
+                                @endif
+                                @php $lastSection = $sec; @endphp
                                 <tr class="group/row {{ $isF ? 'bg-[var(--ui-muted-5)]/40' : '' }}">
                                     {{-- Zeilen-Kopf --}}
                                     <td class="sticky left-0 z-10 {{ $isF ? 'bg-[var(--ui-muted-5)]/80' : 'bg-[var(--ui-surface)]' }} group-hover/row:bg-[var(--ui-muted-5)] px-4 py-3 border-b border-[var(--ui-border)]/40 transition-colors">

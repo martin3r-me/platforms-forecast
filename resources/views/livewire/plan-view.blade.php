@@ -185,6 +185,11 @@
                                 {{ $showShare ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium' : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)]' }}">
                             @svg('heroicon-o-chart-pie','w-3.5 h-3.5') Anteil %
                         </button>
+                        <button type="button" wire:click="toggleDelta"
+                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors
+                                {{ $showDelta ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium' : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)]' }}">
+                            @svg('heroicon-o-arrow-trending-up','w-3.5 h-3.5') Δ Vorperiode
+                        </button>
                     </div>
                     <div class="flex items-center gap-3 text-[11px] text-[var(--ui-muted)]">
                         <span class="inline-flex items-center gap-1"><span class="text-[9px] font-bold px-1 rounded bg-emerald-500/15 text-emerald-600">+</span> Plus</span>
@@ -322,6 +327,12 @@
                                             @if($showShare && isset($share[$rowKey][$col['bucket']]))
                                                 <div class="mt-0.5 text-[10px] font-medium text-[var(--ui-primary)]">{{ number_format($share[$rowKey][$col['bucket']], 1, ',', '.') }} % Anteil</div>
                                             @endif
+                                            @if($showDelta && isset($delta[$rowKey][$col['bucket']]))
+                                                @php $d = $delta[$rowKey][$col['bucket']]; @endphp
+                                                <div class="mt-0.5 text-[10px] font-medium {{ $d['abs'] > 0 ? 'text-emerald-600' : ($d['abs'] < 0 ? 'text-rose-600' : 'text-[var(--ui-muted)]/60') }}">
+                                                    {{ $d['abs'] > 0 ? '▲' : ($d['abs'] < 0 ? '▼' : '=') }} {{ $d['abs'] >= 0 ? '+' : '−' }}{{ $fmt(abs($d['abs'])) }}@if($d['pct'] !== null) <span class="opacity-75">({{ $d['pct'] >= 0 ? '+' : '−' }}{{ number_format(abs($d['pct']), 1, ',', '.') }}&thinsp;%)</span>@endif
+                                                </div>
+                                            @endif
                                         </td>
                                     @endforeach
                                 </tr>
@@ -337,4 +348,80 @@
 
         </div>
     </x-ui-page-container>
+
+    {{-- ═══════════ Innenliegende Sidebar: „Wo bin ich" — Position im Gesamtkontext ═══════════ --}}
+    <x-slot name="sidebar">
+        <x-ui-page-sidebar title="Navigation" width="w-72" :defaultOpen="true" storeKey="forecastNavOpen" side="left">
+            <div class="p-4 space-y-6 text-sm">
+
+                {{-- Plan-Landkarte: Eltern hoch · hier · Kinder runter --}}
+                <div>
+                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-[var(--ui-muted)] mb-2.5">Plan-Kontext</h3>
+                    <div class="space-y-0.5">
+                        @foreach($ancestors as $i => $anc)
+                            <a href="{{ route('forecast.plans.show', ['uuid' => $anc->uuid]) }}" wire:navigate
+                               class="flex items-center gap-1.5 py-1 rounded-md text-[var(--ui-muted)] hover:text-[var(--ui-primary)] hover:bg-[var(--ui-muted-10)] transition-colors"
+                               style="padding-left: {{ 6 + $i * 14 }}px">
+                                @svg('heroicon-o-chevron-up','w-3 h-3 shrink-0 opacity-60') <span class="truncate">{{ $anc->name }}</span>
+                            </a>
+                        @endforeach
+
+                        <div class="flex items-center gap-1.5 py-1 rounded-md font-semibold text-[var(--ui-primary)] bg-[var(--ui-primary)]/[0.08]"
+                             style="padding-left: {{ 6 + count($ancestors) * 14 }}px">
+                            @svg('heroicon-o-map-pin','w-3.5 h-3.5 shrink-0') <span class="truncate">{{ $plan->name }}</span>
+                        </div>
+
+                        @foreach($childPlans as $child)
+                            <a href="{{ route('forecast.plans.show', ['uuid' => $child->uuid, 'from' => $plan->uuid]) }}" wire:navigate
+                               class="flex items-center gap-1.5 py-1 rounded-md text-[var(--ui-secondary)] hover:text-[var(--ui-primary)] hover:bg-[var(--ui-muted-10)] transition-colors"
+                               style="padding-left: {{ 6 + (count($ancestors) + 1) * 14 }}px">
+                                @svg('heroicon-o-chevron-down','w-3 h-3 shrink-0 opacity-60') <span class="truncate">{{ $child->name }}</span>
+                            </a>
+                        @endforeach
+                    </div>
+                    @if(empty($ancestors) && $childPlans->isEmpty())
+                        <p class="text-[11px] text-[var(--ui-muted)]/70 mt-1">Eigenständige Planung — keine Über-/Unterpläne.</p>
+                    @endif
+                </div>
+
+                {{-- Detail-Pläne (Drill-down aus Formel-Zeilen) --}}
+                @if(!empty($detailPlans))
+                    <div>
+                        <h3 class="text-[10px] font-semibold uppercase tracking-wider text-[var(--ui-muted)] mb-2.5">Detail-Pläne</h3>
+                        <div class="space-y-0.5">
+                            @foreach($detailPlans as $dp)
+                                <a href="{{ route('forecast.plans.show', ['uuid' => $dp['uuid'], 'from' => $plan->uuid]) }}" wire:navigate
+                                   class="flex items-center gap-1.5 py-1 px-1.5 rounded-md text-[var(--ui-secondary)] hover:text-[var(--ui-primary)] hover:bg-[var(--ui-muted-10)] transition-colors">
+                                    @svg('heroicon-o-arrow-top-right-on-square','w-3 h-3 shrink-0 opacity-60') <span class="truncate">{{ $dp['name'] }}</span>
+                                </a>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                {{-- Zeit-Ebene: aktueller Zoom-Pfad --}}
+                <div>
+                    <h3 class="text-[10px] font-semibold uppercase tracking-wider text-[var(--ui-muted)] mb-2.5">Zeit-Ebene</h3>
+                    <div class="flex flex-wrap items-center gap-x-1 gap-y-1">
+                        @foreach($breadcrumb as $i => $crumb)
+                            @if($i > 0)<span class="text-[var(--ui-muted)]/40 text-xs">/</span>@endif
+                            <button type="button" wire:click="zoom('{{ $crumb['bucket'] }}')"
+                                class="px-1.5 py-0.5 rounded text-xs transition-colors {{ $loop->last ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium' : 'text-[var(--ui-muted)] hover:text-[var(--ui-secondary)] hover:bg-[var(--ui-muted-10)]' }}">
+                                {{ $crumb['label'] }}
+                            </button>
+                        @endforeach
+                    </div>
+                    <div class="mt-1.5 text-[11px] text-[var(--ui-muted)]">Ebene: <span class="text-[var(--ui-secondary)] font-medium">{{ $levelLabel }}</span></div>
+                </div>
+
+                {{-- Zurück zur Herkunft --}}
+                @if($fromPlan)
+                    <a href="{{ route('forecast.plans.show', ['uuid' => $fromPlan->uuid]) }}" wire:navigate
+                       class="inline-flex items-center gap-1.5 text-[var(--ui-secondary)] hover:text-[var(--ui-primary)] font-medium">
+                        @svg('heroicon-o-arrow-uturn-left','w-3.5 h-3.5') Zurück: {{ $fromPlan->name }}
+                    </a>
+                @endif
+            </div>
+        </x-ui-page-sidebar>
+    </x-slot>
 </x-ui-page>

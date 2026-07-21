@@ -32,6 +32,9 @@ class PlanView extends Component
     /** Anteils-Ansicht: zeigt je Summen-Block den prozentualen Anteil jeder Zeile. */
     public bool $showShare = false;
 
+    /** Delta-Ansicht: Veränderung je Zelle zur vorherigen Spalte (absolut + %). */
+    public bool $showDelta = false;
+
     public function mount(string $uuid): void
     {
         $this->uuid = $uuid;
@@ -48,6 +51,11 @@ class PlanView extends Component
     public function toggleShare(): void
     {
         $this->showShare = ! $this->showShare;
+    }
+
+    public function toggleDelta(): void
+    {
+        $this->showDelta = ! $this->showDelta;
     }
 
     protected function plan(): ForecastPlan
@@ -190,6 +198,30 @@ class PlanView extends Component
             }
         }
 
+        // Delta zur Vorperiode: Veränderung je Zelle zur vorherigen Spalte (absolut + %)
+        $colVal = function (string $rk, string $b) use ($rows, $rowInfo, $formulaCells, $meta) {
+            if ($rowInfo[$rk]['isFormula'] ?? false) {
+                return (float) ($formulaCells[$rk][$b] ?? 0);
+            }
+            $c = $rows[$rk]['cells'][$b] ?? null;
+            if ($c && ($c['entered'] || $c['value'] != 0)) {
+                return (float) $c['value'];
+            }
+            return (float) ($meta[$rk]['spread'] ?? 0);
+        };
+        $delta = [];
+        foreach ($rows as $rk => $r) {
+            $prev = null;
+            foreach ($columns as $col) {
+                $v = $colVal($rk, $col['bucket']);
+                if ($prev !== null) {
+                    $abs = $v - $prev;
+                    $delta[$rk][$col['bucket']] = ['abs' => $abs, 'pct' => $prev != 0 ? $abs / abs($prev) * 100 : null];
+                }
+                $prev = $v;
+            }
+        }
+
         // Zeit-Sperre aus entkoppelter Policy (Plan-Policy → Team-Default → Legacy → Code-Default)
         $policy = $plan->lockPolicy ?? ForecastLockPolicy::resolveDefault($plan->team_id);
         $lock = array_merge(
@@ -204,17 +236,39 @@ class PlanView extends Component
             $colStatus[$col['bucket']] = LockService::status($col['bucket'], $lock, $now);
         }
 
-        // Navigation: Eltern (Konsolidierung), Kinder, und Herkunft ("Zurück")
+        // Navigation: Ahnen-Kette (Konsolidierung hoch), Kinder, Detail-Pläne, Herkunft
         $parentPlan = $plan->parentPlan;
         $childPlans = $plan->children()->orderBy('name')->get();
         $fromPlan = $this->from
             ? ForecastPlan::where('team_id', $plan->team_id)->where('uuid', $this->from)->first()
             : null;
 
+        $ancestors = [];
+        $p = $plan->parentPlan;
+        while ($p) {
+            $ancestors[] = $p;
+            $p = $p->parentPlan;
+        }
+        $ancestors = array_reverse($ancestors); // Wurzel zuerst
+
+        $detailPlans = [];
+        foreach ($rowInfo as $ri) {
+            foreach (($ri['refPlans'] ?? []) as $rp) {
+                if (($rp['uuid'] ?? null) && ! isset($detailPlans[$rp['uuid']])) {
+                    $detailPlans[$rp['uuid']] = ['uuid' => $rp['uuid'], 'name' => $rp['name']];
+                }
+            }
+        }
+        $detailPlans = array_values($detailPlans);
+
         return view('forecast::livewire.plan-view', [
             'parentPlan' => $parentPlan,
             'childPlans' => $childPlans,
             'fromPlan' => $fromPlan,
+            'ancestors' => $ancestors,
+            'detailPlans' => $detailPlans,
+            'delta' => $delta,
+            'showDelta' => $this->showDelta,
             'share' => $share,
             'showShare' => $this->showShare,
             'plan' => $plan,

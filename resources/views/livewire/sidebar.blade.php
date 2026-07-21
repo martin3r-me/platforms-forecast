@@ -36,24 +36,37 @@
         </x-ui-sidebar-item>
     </x-ui-sidebar-list>
 
+    {{-- Abschnitt: Planungen (Baum — Wurzel-Pläne → konsolidierte Kinder) --}}
+    <div x-show="!collapsed">
+        <x-ui-sidebar-list label="Planungen">
+            @forelse($roots as $root)
+                <x-ui-sidebar-item :href="route('forecast.plans.show', ['uuid' => $root->uuid])">
+                    @svg('heroicon-o-chart-bar-square', 'w-4 h-4 text-[var(--ui-primary)]')
+                    <span class="ml-2 text-sm truncate">{{ $root->name }}</span>
+                </x-ui-sidebar-item>
+                @foreach(($childrenByParent[$root->id] ?? []) as $child)
+                    <x-ui-sidebar-item :href="route('forecast.plans.show', ['uuid' => $child->uuid, 'from' => $root->uuid])">
+                        <span class="ml-3 flex items-center gap-1.5 text-[var(--ui-muted)]">
+                            @svg('heroicon-o-arrow-turn-down-right', 'w-3.5 h-3.5')
+                            <span class="text-sm truncate">{{ $child->name }}</span>
+                        </span>
+                    </x-ui-sidebar-item>
+                @endforeach
+            @empty
+                <div class="px-3 py-2 text-xs italic text-[var(--ui-muted)]">Noch keine Planungen</div>
+            @endforelse
+        </x-ui-sidebar-list>
+    </div>
+
     {{-- Collapsed: Icons-only --}}
     <div x-show="collapsed" class="px-2 py-2 border-b border-[var(--ui-border)]">
         <div class="flex flex-col gap-2">
             <a href="{{ route('forecast.dashboard') }}" wire:navigate class="flex items-center justify-center p-2 rounded-md text-[var(--ui-secondary)] hover:bg-[var(--ui-muted-5)]">
                 @svg('heroicon-o-home', 'w-5 h-5')
             </a>
+            <a href="{{ route('forecast.plans.index') }}" wire:navigate class="flex items-center justify-center p-2 rounded-md text-[var(--ui-secondary)] hover:bg-[var(--ui-muted-5)]">
+                @svg('heroicon-o-table-cells', 'w-5 h-5')
+            </a>
         </div>
     </div>
-
-    {{-- BEISPIEL: Dynamische Liste (auskommentiert) --}}
-    {{--
-    <x-ui-sidebar-list label="Dynamische Liste">
-        @foreach($entities as $entity)
-            <x-ui-sidebar-item :href="route('forecast.entities.show', ['entity' => $entity])">
-                @svg('heroicon-o-cube', 'w-4 h-4 text-[var(--ui-secondary)]')
-                <span class="ml-2 text-sm">{{ $entity->name }}</span>
-            </x-ui-sidebar-item>
-        @endforeach
-    </x-ui-sidebar-list>
-    --}}
 </div>

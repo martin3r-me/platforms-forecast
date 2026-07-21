@@ -19,7 +19,7 @@ class ForecastPlan extends Model
     protected $table = 'forecast_plans';
 
     protected $fillable = [
-        'uuid', 'team_id', 'user_id', 'plan_type_id', 'organization_entity_id',
+        'uuid', 'team_id', 'user_id', 'plan_type_id', 'parent_plan_id', 'organization_entity_id',
         'name', 'base_level', 'period_start', 'period_end', 'org_mode',
         'lock_policy_id', 'current_version', 'metadata',
     ];
@@ -59,6 +59,18 @@ class ForecastPlan extends Model
     public function lockPolicy()
     {
         return $this->belongsTo(ForecastLockPolicy::class, 'lock_policy_id');
+    }
+
+    /** Konsolidierungs-Eltern (dieser Plan ist ein Kind davon). */
+    public function parentPlan()
+    {
+        return $this->belongsTo(ForecastPlan::class, 'parent_plan_id');
+    }
+
+    /** Kind-Instanzen, die dieser Plan konsolidiert. */
+    public function children()
+    {
+        return $this->hasMany(ForecastPlan::class, 'parent_plan_id');
     }
 
     /** Instanz-eigene Zeilen (Ergänzungen). */

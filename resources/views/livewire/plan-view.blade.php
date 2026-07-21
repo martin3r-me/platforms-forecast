@@ -42,6 +42,33 @@
     <x-ui-page-container>
         <div class="space-y-6">
 
+            {{-- ═══════════ Navigation: rein/raus (Zurück · Konsolidierung · Kinder) ═══════════ --}}
+            @if($fromPlan || $parentPlan || $childPlans->isNotEmpty())
+                <div class="flex flex-wrap items-center gap-2 text-sm">
+                    @if($fromPlan)
+                        <a href="{{ route('forecast.plans.show', ['uuid' => $fromPlan->uuid]) }}" wire:navigate
+                           class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--ui-muted-10)] text-[var(--ui-secondary)] hover:bg-[var(--ui-muted-10)]/70 font-medium">
+                            @svg('heroicon-o-arrow-left','w-4 h-4') Zurück: {{ $fromPlan->name }}
+                        </a>
+                    @endif
+                    @if($parentPlan)
+                        <a href="{{ route('forecast.plans.show', ['uuid' => $parentPlan->uuid]) }}" wire:navigate
+                           class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[var(--ui-primary)] hover:bg-[var(--ui-primary)]/10 font-medium">
+                            @svg('heroicon-o-arrow-up-circle','w-4 h-4') Gesamtplanung: {{ $parentPlan->name }}
+                        </a>
+                    @endif
+                    @if($childPlans->isNotEmpty())
+                        <span class="text-xs text-[var(--ui-muted)]">Konsolidiert aus:</span>
+                        @foreach($childPlans as $child)
+                            <a href="{{ route('forecast.plans.show', ['uuid' => $child->uuid, 'from' => $plan->uuid]) }}" wire:navigate
+                               class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--ui-primary)]/[0.08] text-[var(--ui-primary)] hover:bg-[var(--ui-primary)]/15 text-xs">
+                                @svg('heroicon-o-arrow-down-right','w-3.5 h-3.5') {{ $child->name }}
+                            </a>
+                        @endforeach
+                    @endif
+                </div>
+            @endif
+
             {{-- ═══════════ Kontext-Kopf ═══════════ --}}
             <div class="space-y-4">
                 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -205,7 +232,7 @@
                                             <span class="font-medium text-[var(--ui-secondary)]">{{ $row['label'] }}</span>
                                             @php $refPlans = $rowInfo[$rowKey]['refPlans'] ?? []; @endphp
                                             @if(!empty($refPlans) && ($refPlans[0]['uuid'] ?? null))
-                                                <a href="{{ route('forecast.plans.show', ['uuid' => $refPlans[0]['uuid']]) }}" wire:navigate
+                                                <a href="{{ route('forecast.plans.show', ['uuid' => $refPlans[0]['uuid'], 'from' => $plan->uuid]) }}" wire:navigate
                                                    class="inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--ui-primary)] hover:underline px-1 py-0.5 rounded hover:bg-[var(--ui-primary)]/10"
                                                    title="Detailplan öffnen: {{ $refPlans[0]['name'] }}{{ count($refPlans) > 1 ? ' (+'.(count($refPlans)-1).' weitere)' : '' }}">
                                                     @svg('heroicon-o-arrow-top-right-on-square','w-3 h-3') Detail

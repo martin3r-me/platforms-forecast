@@ -101,6 +101,28 @@ final class PlanReconciler
             $rows[$row->key] = ['label' => $row->label, 'kind' => $row->kind->value, 'cells' => $cells];
         }
 
+        // Konsolidierung: Eingabe-Zeilen der Kind-Instanzen aufsummieren
+        // (Formel-Zeilen werden danach auf den konsolidierten Eingaben neu gerechnet).
+        $children = ForecastPlan::where('parent_plan_id', $plan->id)->get();
+        foreach ($children as $child) {
+            $cv = $this->compute($child, $visiting);
+            foreach ($resolved as $row) {
+                if ($rowInfo[$row->key]['isFormula']) {
+                    continue;
+                }
+                $cells = $rows[$row->key]['cells'];
+                foreach (($cv['rows'][$row->key]['cells'] ?? []) as $b => $c) {
+                    if (! isset($cells[$b])) {
+                        $cells[$b] = ['level' => $c['level'], 'entered' => false, 'mode' => null, 'value' => 0.0, 'rest' => 0.0, 'derived' => true];
+                    }
+                    $cells[$b]['value'] = round($cells[$b]['value'] + $c['value'], 4);
+                    $cells[$b]['rest'] = round($cells[$b]['rest'] + ($c['rest'] ?? 0), 4);
+                }
+                ksort($cells);
+                $rows[$row->key]['cells'] = $cells;
+            }
+        }
+
         // Referenzierte Pläne rekursiv berechnen (mit Cache über $refViews)
         $refViews = [];
         foreach (array_keys($refPlanIds) as $pid) {

@@ -26,9 +26,13 @@ class PlanView extends Component
     /** Aktuell aufgeklappter Container-Bucket ('' = Wurzel/Jahre). */
     public string $container = '';
 
+    /** Herkunfts-Plan-uuid (für den "Zurück"-Link nach einem Drill-Klick). */
+    public ?string $from = null;
+
     public function mount(string $uuid): void
     {
         $this->uuid = $uuid;
+        $this->from = request()->query('from');
         // Validierung + Team-Scope
         $this->plan();
     }
@@ -172,7 +176,17 @@ class PlanView extends Component
             $colStatus[$col['bucket']] = LockService::status($col['bucket'], $lock, $now);
         }
 
+        // Navigation: Eltern (Konsolidierung), Kinder, und Herkunft ("Zurück")
+        $parentPlan = $plan->parentPlan;
+        $childPlans = $plan->children()->orderBy('name')->get();
+        $fromPlan = $this->from
+            ? ForecastPlan::where('team_id', $plan->team_id)->where('uuid', $this->from)->first()
+            : null;
+
         return view('forecast::livewire.plan-view', [
+            'parentPlan' => $parentPlan,
+            'childPlans' => $childPlans,
+            'fromPlan' => $fromPlan,
             'plan' => $plan,
             'rows' => $rows,
             'columns' => $columns,

@@ -38,6 +38,7 @@ class CreatePlanTool implements ToolContract, ToolMetadataContract
                 'base_level' => ['type' => 'string', 'enum' => ['year', 'month', 'day', 'hour']],
                 'period_start' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
                 'period_end' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                'parent_plan' => ['type' => 'string', 'description' => 'uuid der Konsolidierungs-Elternplanung (dieser Plan wird Kind davon).'],
                 'rows' => [
                     'type' => 'array',
                     'description' => 'Zusätzliche Instanz-Zeilen (ergänzen den Typ).',
@@ -66,6 +67,15 @@ class CreatePlanTool implements ToolContract, ToolMetadataContract
 
             $orgMode = ($arguments['org_mode'] ?? 'detail') === 'plus' ? 'plus' : 'detail';
 
+            $parentId = null;
+            if (! empty($arguments['parent_plan'])) {
+                $parent = $this->findPlan((string) $arguments['parent_plan'], $teamId);
+                if (! $parent) {
+                    return ToolResult::error('Elternplanung nicht gefunden.', 'PARENT_NOT_FOUND');
+                }
+                $parentId = $parent->id;
+            }
+
             $plan = (new PlanService())->createPlan(
                 $teamId,
                 $this->userId($context),
@@ -78,6 +88,7 @@ class CreatePlanTool implements ToolContract, ToolMetadataContract
                     'base_level' => $arguments['base_level'] ?? 'month',
                     'period_start' => $arguments['period_start'] ?? null,
                     'period_end' => $arguments['period_end'] ?? null,
+                    'parent_plan_id' => $parentId,
                 ],
             );
 
@@ -85,6 +96,7 @@ class CreatePlanTool implements ToolContract, ToolMetadataContract
                 'uuid' => $plan->uuid,
                 'name' => $plan->name,
                 'plan_type' => $type->key,
+                'parent_plan_id' => $plan->parent_plan_id,
                 'organization_entity_id' => $plan->organization_entity_id,
                 'org_mode' => $plan->org_mode?->value,
                 'version' => $plan->current_version,

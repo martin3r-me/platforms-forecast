@@ -36,22 +36,22 @@
         </x-ui-sidebar-item>
     </x-ui-sidebar-list>
 
-    {{-- Abschnitt: Planungen (Baum — Wurzel-Pläne → konsolidierte Kinder) --}}
+    {{-- Abschnitt: Planungen (nur Top-Level: Master & Einzelpläne; Instanzen drinnen) --}}
     <div x-show="!collapsed">
+        @php
+            $sbIcon = fn ($r) => match ($r) {
+                'master' => ['heroicon-o-square-3-stack-3d', 'text-indigo-500'],
+                'detail' => ['heroicon-o-magnifying-glass-plus', 'text-amber-500'],
+                default => ['heroicon-o-chart-bar-square', 'text-[var(--ui-primary)]'],
+            };
+        @endphp
         <x-ui-sidebar-list label="Planungen">
             @forelse($roots as $root)
+                @php [$ic, $col] = $sbIcon($planRole[$root->id] ?? 'single'); @endphp
                 <x-ui-sidebar-item :href="route('forecast.plans.show', ['uuid' => $root->uuid])">
-                    @svg('heroicon-o-chart-bar-square', 'w-4 h-4 text-[var(--ui-primary)]')
+                    @svg($ic, 'w-4 h-4 '.$col)
                     <span class="ml-2 text-sm truncate">{{ $root->name }}</span>
                 </x-ui-sidebar-item>
-                @foreach(($childrenByParent[$root->id] ?? []) as $child)
-                    <x-ui-sidebar-item :href="route('forecast.plans.show', ['uuid' => $child->uuid, 'from' => $root->uuid])">
-                        <span class="ml-3 flex items-center gap-1.5 text-[var(--ui-muted)]">
-                            @svg('heroicon-o-arrow-turn-down-right', 'w-3.5 h-3.5')
-                            <span class="text-sm truncate">{{ $child->name }}</span>
-                        </span>
-                    </x-ui-sidebar-item>
-                @endforeach
             @empty
                 <div class="px-3 py-2 text-xs italic text-[var(--ui-muted)]">Noch keine Planungen</div>
             @endforelse

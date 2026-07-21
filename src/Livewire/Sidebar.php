@@ -5,11 +5,12 @@ namespace Platform\Forecast\Livewire;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 use Platform\Forecast\Models\ForecastPlan;
+use Platform\Forecast\Models\ForecastRowSource;
 
 /**
- * Modul-Sidebar: statische Navigation + dynamische Auflistung aller Planungen
- * als Baum (Wurzel-Pläne → konsolidierte Kind-Instanzen), damit man von überall
- * direkt in eine Planung springen kann.
+ * Modul-Sidebar: statische Navigation + Auflistung der Top-Level-Planungen
+ * (Master & Einzelpläne). Kind-Instanzen erreicht man drinnen über die
+ * kontext-Sidebar der Planung. Rolle je Plan über ein Icon gekennzeichnet.
  */
 class Sidebar extends Component
 {
@@ -18,7 +19,7 @@ class Sidebar extends Component
         $user = Auth::user();
 
         if (! $user) {
-            return view('forecast::livewire.sidebar', ['roots' => collect(), 'childrenByParent' => collect()]);
+            return view('forecast::livewire.sidebar', ['roots' => collect(), 'planRole' => []]);
         }
 
         $teamId = $user->currentTeam?->id ?? $user->current_team_id;
@@ -28,14 +29,26 @@ class Sidebar extends Component
             ->get(['id', 'uuid', 'name', 'parent_plan_id']);
 
         $childrenByParent = $plans->groupBy('parent_plan_id');
-
-        // Wurzeln: kein Elternplan ODER Elternplan liegt außerhalb der Sichtbarkeit
         $ids = $plans->pluck('id')->all();
+
+        $detailSourceIds = ForecastRowSource::whereNotNull('source_plan_id')
+            ->pluck('source_plan_id')->map(fn ($x) => (int) $x)->unique()->all();
+
+        $planRole = [];
+        foreach ($plans as $p) {
+            $hasChildren = ($childrenByParent[$p->id] ?? collect())->isNotEmpty();
+            $hasParent = $p->parent_plan_id && in_array($p->parent_plan_id, $ids, true);
+            $planRole[$p->id] = $hasChildren ? 'master'
+                : ($hasParent ? 'instance'
+                    : (in_array($p->id, $detailSourceIds, true) ? 'detail' : 'single'));
+        }
+
+        // Nur Parent/Top-Level: Master + Einzel-/Detailpläne ohne Elternplan (keine Instanzen)
         $roots = $plans->filter(fn ($p) => $p->parent_plan_id === null || ! in_array($p->parent_plan_id, $ids, true))->values();
 
         return view('forecast::livewire.sidebar', [
             'roots' => $roots,
-            'childrenByParent' => $childrenByParent,
+            'planRole' => $planRole,
         ]);
     }
 }

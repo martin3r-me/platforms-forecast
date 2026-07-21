@@ -4,10 +4,12 @@ namespace Platform\Forecast\Livewire;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Platform\Forecast\Enums\TimeLevel;
 use Platform\Forecast\Models\ForecastLockPolicy;
 use Platform\Forecast\Models\ForecastPlan;
+use Platform\Forecast\Models\ForecastRowSource;
 use Platform\Forecast\Reconciliation\Mode;
 use Platform\Forecast\Reconciliation\TimeAxis;
 use Platform\Forecast\Services\Aggregation;
@@ -72,6 +74,11 @@ class PlanView extends Component
         $rows = $view['rows'];
         $rowInfo = $view['rowInfo'];
         $totals = $view['totals'] ?? [];
+
+        // Master (konsolidiert Kind-Instanzen): Eingabe-Zeilen sind hier abgeleitet,
+        // kein „offener Rest" — Rest-/Verbindlich-Anzeige wird für diese unterdrückt.
+        $isMaster = $plan->children()->exists();
+        $childCount = $isMaster ? $plan->children()->count() : 0;
 
         $columns = $this->columns($plan);
         $level = $this->childLevel($this->container);
@@ -143,6 +150,17 @@ class PlanView extends Component
                 'spread' => $spread,
                 'cellCommitted' => $cellCommitted,
             ];
+        }
+
+        // Master: konsolidierte Eingabe-Zeilen voll „verbindlich" (kein offener Rest, keine ≈-Verteilung)
+        if ($isMaster) {
+            foreach ($meta as $rk => &$m) {
+                $m['committed'] = $m['value'];
+                $m['rest'] = 0.0;
+                $m['spread'] = 0.0;
+                $m['cellCommitted'] = [];
+            }
+            unset($m);
         }
 
         // Formel-Zeilen: systemseitig berechnete Werte (aus PlanReconciler); leere
@@ -251,35 +269,103 @@ class PlanView extends Component
         }
         $ancestors = array_reverse($ancestors); // Wurzel zuerst
 
-        // Kompletter Plan-Baum des Teams (immer sichtbar in der Nav, aktueller Plan markiert)
+        // Team-Pläne + Rollen: Master (hat Kinder) · Instanz (hat Elternplan) · Detail (wird referenziert) · Einzel
         $allPlans = ForecastPlan::where('team_id', $plan->team_id)
             ->orderBy('name')
-            ->get(['id', 'uuid', 'name', 'parent_plan_id']);
+            ->get(['id', 'uuid', 'name', 'parent_plan_id', 'plan_type_id']);
         $childrenByParent = $allPlans->groupBy('parent_plan_id');
         $planIds = $allPlans->pluck('id')->all();
-        $rootPlans = $allPlans->filter(fn ($pp) => $pp->parent_plan_id === null || ! in_array($pp->parent_plan_id, $planIds, true))->values();
         $ancestorIds = array_map(fn ($a) => $a->id, $ancestors);
         $ancestorIds[] = $plan->id;
 
-        $detailPlans = [];
-        foreach ($rowInfo as $ri) {
-            foreach (($ri['refPlans'] ?? []) as $rp) {
-                if (($rp['uuid'] ?? null) && ! isset($detailPlans[$rp['uuid']])) {
-                    $detailPlans[$rp['uuid']] = ['uuid' => $rp['uuid'], 'name' => $rp['name']];
+        $detailSourceIds = ForecastRowSource::whereNotNull('source_plan_id')
+            ->pluck('source_plan_id')->map(fn ($x) => (int) $x)->unique()->all();
+        $planRole = [];
+        foreach ($allPlans as $pp) {
+            $hasChildren = ($childrenByParent[$pp->id] ?? collect())->isNotEmpty();
+            $hasParent = $pp->parent_plan_id && in_array($pp->parent_plan_id, $planIds, true);
+            $planRole[$pp->id] = $hasChildren ? 'master'
+                : ($hasParent ? 'instance'
+                    : (in_array($pp->id, $detailSourceIds, true) ? 'detail' : 'single'));
+        }
+
+        // Kontext = verbundene Komponente des aktuellen Plans (Konsolidierung ∪ Drill-down)
+        $adj = [];
+        $addEdge = function ($a, $b) use (&$adj) {
+            if ($a && $b && $a !== $b) {
+                $adj[$a][$b] = true;
+                $adj[$b][$a] = true;
+            }
+        };
+        foreach ($allPlans as $pp) {
+            if ($pp->parent_plan_id && in_array($pp->parent_plan_id, $planIds, true)) {
+                $addEdge($pp->id, $pp->parent_plan_id);
+            }
+        }
+        $plansByType = $allPlans->groupBy('plan_type_id');
+        foreach (DB::table('forecast_row_sources as rs')
+            ->join('forecast_rows as r', 'r.id', '=', 'rs.row_id')
+            ->whereNotNull('rs.source_plan_id')
+            ->select('rs.source_plan_id', 'r.plan_id', 'r.plan_type_id')->get() as $e) {
+            $detailId = (int) $e->source_plan_id;
+            if (! in_array($detailId, $planIds, true)) {
+                continue;
+            }
+            if ($e->plan_id && in_array((int) $e->plan_id, $planIds, true)) {
+                $addEdge((int) $e->plan_id, $detailId);
+            } elseif ($e->plan_type_id) {
+                foreach (($plansByType[$e->plan_type_id] ?? []) as $cp) {
+                    $addEdge($cp->id, $detailId);
                 }
             }
         }
-        $detailPlans = array_values($detailPlans);
+        $componentSet = [$plan->id => true];
+        $queue = [$plan->id];
+        while ($queue) {
+            $n = array_shift($queue);
+            foreach (array_keys($adj[$n] ?? []) as $m) {
+                if (empty($componentSet[$m])) {
+                    $componentSet[$m] = true;
+                    $queue[] = $m;
+                }
+            }
+        }
+        $context = $allPlans->filter(fn ($pp) => isset($componentSet[$pp->id]));
+
+        // Konsolidierungs-Wurzeln im Kontext (Master ohne Elternplan im Kontext) → Baum;
+        // übrige Kontext-Pläne (Detail/Einzel) → separate Liste.
+        $contextRoots = $context->filter(function ($pp) use ($childrenByParent, $componentSet) {
+            $hasChildrenInCtx = ($childrenByParent[$pp->id] ?? collect())->contains(fn ($c) => isset($componentSet[$c->id]));
+            $parentInCtx = $pp->parent_plan_id && isset($componentSet[$pp->parent_plan_id]);
+            return $hasChildrenInCtx && ! $parentInCtx;
+        })->values();
+        $inTree = [];
+        $collect = function ($id) use (&$collect, &$inTree, $childrenByParent, $componentSet) {
+            $inTree[$id] = true;
+            foreach (($childrenByParent[$id] ?? []) as $c) {
+                if (isset($componentSet[$c->id]) && empty($inTree[$c->id])) {
+                    $collect($c->id);
+                }
+            }
+        };
+        foreach ($contextRoots as $r) {
+            $collect($r->id);
+        }
+        $contextOther = $context->filter(fn ($pp) => empty($inTree[$pp->id]))->values();
 
         return view('forecast::livewire.plan-view', [
             'parentPlan' => $parentPlan,
             'childPlans' => $childPlans,
             'fromPlan' => $fromPlan,
             'ancestors' => $ancestors,
-            'detailPlans' => $detailPlans,
-            'rootPlans' => $rootPlans,
+            'contextRoots' => $contextRoots,
+            'contextOther' => $contextOther,
             'childrenByParent' => $childrenByParent,
+            'componentSet' => $componentSet,
+            'planRole' => $planRole,
             'ancestorIds' => $ancestorIds,
+            'isMaster' => $isMaster,
+            'childCount' => $childCount,
             'delta' => $delta,
             'showDelta' => $this->showDelta,
             'share' => $share,

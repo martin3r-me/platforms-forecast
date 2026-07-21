@@ -272,45 +272,51 @@ final class PlanReconciler
             }
         }
 
-        // Plan-Gesamtwert je Zeile (für die Wurzel-Übersicht): Eingabe = Σ Jahres-Zellen;
-        // Formel = Aggregation über die Gesamtwerte der Quellen (inkl. Cross-Plan, Ratio korrekt).
+        // Plan-Gesamtwert je Zeile (für die Wurzel-Übersicht). ZWEI Pässe, damit Formeln,
+        // die auf später definierte Eingaben verweisen (z. B. Kategorie = Gesamt × Anteil,
+        // wobei „Gesamt" weiter unten steht), korrekte Quell-Totals sehen:
+        //   Pass 1: Eingabe-Zeilen = Σ Jahres-Zellen.
+        //   Pass 2: Formel-Zeilen (Reihenfolge) = Aggregation über Quell-Totals (Ratio/Cross-Plan korrekt),
+        //           bzw. am Ordner nicht-neu-rechenbar = Σ Jahres-Zellen.
         $totals = [];
+        $sumYearCells = function (string $k) use ($rows): float {
+            $sum = 0.0;
+            foreach ($rows[$k]['cells'] as $c) {
+                if (($c['level'] ?? '') === 'year') {
+                    $sum += $c['value'];
+                }
+            }
+            return round($sum, 4);
+        };
+        foreach ($resolved as $row) {
+            if (! $rowInfo[$row->key]['isFormula']) {
+                $totals[$row->key] = $sumYearCells($row->key);
+            }
+        }
         foreach ($resolved as $row) {
             $k = $row->key;
-            if ($rowInfo[$k]['isFormula'] && $hasChildren && ($nonRecomputable[$k] ?? false)) {
-                // Am Ordner wie Eingabe konsolidiert → Gesamtwert = Σ Jahres-Zellen.
-                $sum = 0.0;
-                foreach ($rows[$k]['cells'] as $c) {
-                    if (($c['level'] ?? '') === 'year') {
-                        $sum += $c['value'];
-                    }
-                }
-                $totals[$k] = round($sum, 4);
-            } elseif ($rowInfo[$k]['isFormula']) {
-                $vals = [];
-                $dirs = [];
-                foreach ($row->sources as $src) {
-                    if ($src->source_plan_id === null) {
-                        $t = $totals[$src->source_row_key] ?? 0.0;
-                        $d = $rowInfo[$src->source_row_key]['direction'] ?? 'neutral';
-                    } else {
-                        $rv = $refViews[$src->source_plan_id] ?? null;
-                        $t = $rv['totals'][$src->source_row_key] ?? 0.0;
-                        $d = $rv['rowInfo'][$src->source_row_key]['direction'] ?? 'neutral';
-                    }
-                    $vals[] = $t * (float) $src->weight;
-                    $dirs[] = $d;
-                }
-                $totals[$k] = round(Aggregation::aggregate($rowInfo[$k]['agg'], $vals, $dirs), 4);
-            } else {
-                $sum = 0.0;
-                foreach ($rows[$k]['cells'] as $c) {
-                    if (($c['level'] ?? '') === 'year') {
-                        $sum += $c['value'];
-                    }
-                }
-                $totals[$k] = round($sum, 4);
+            if (! $rowInfo[$k]['isFormula']) {
+                continue;
             }
+            if ($hasChildren && ($nonRecomputable[$k] ?? false)) {
+                $totals[$k] = $sumYearCells($k);
+                continue;
+            }
+            $vals = [];
+            $dirs = [];
+            foreach ($row->sources as $src) {
+                if ($src->source_plan_id === null) {
+                    $t = $totals[$src->source_row_key] ?? 0.0;
+                    $d = $rowInfo[$src->source_row_key]['direction'] ?? 'neutral';
+                } else {
+                    $rv = $refViews[$src->source_plan_id] ?? null;
+                    $t = $rv['totals'][$src->source_row_key] ?? 0.0;
+                    $d = $rv['rowInfo'][$src->source_row_key]['direction'] ?? 'neutral';
+                }
+                $vals[] = $t * (float) $src->weight;
+                $dirs[] = $d;
+            }
+            $totals[$k] = round(Aggregation::aggregate($rowInfo[$k]['agg'], $vals, $dirs), 4);
         }
 
         return ['plan' => $this->planMeta($plan), 'rows' => $rows, 'rowInfo' => $rowInfo, 'totals' => $totals];

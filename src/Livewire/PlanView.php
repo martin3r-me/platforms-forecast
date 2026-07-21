@@ -276,14 +276,19 @@ class PlanView extends Component
                 }
                 $present = 0;
                 $absent = 0;
+                $srcPartial = false;
                 foreach ($srcs as $s) {
                     if (isset($rows[$s]['cells'][$b]) && ($rows[$s]['cells'][$b]['value'] ?? 0) != 0) {
                         $present++;
                     } else {
                         $absent++;
                     }
+                    // Propagation: ist eine (früher berechnete) Formel-Quelle selbst unvollständig?
+                    if ($partial[$s][$b] ?? false) {
+                        $srcPartial = true;
+                    }
                 }
-                $partial[$rk][$b] = $present > 0 && $absent > 0;
+                $partial[$rk][$b] = ($present > 0 && $absent > 0) || $srcPartial;
             }
         }
 

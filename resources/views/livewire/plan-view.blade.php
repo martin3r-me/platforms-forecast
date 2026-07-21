@@ -251,20 +251,20 @@
                     </div>
                 </div>
 
-                <div class="overflow-x-auto">
+                <div class="overflow-auto max-h-[72vh] rounded-lg ring-1 ring-[var(--ui-border)]/40">
                     <table class="min-w-full border-separate border-spacing-0 text-sm">
                         <thead>
                             <tr>
-                                <th class="sticky left-0 z-20 bg-[var(--ui-muted-5)] text-left px-4 py-2.5 font-medium text-[11px] uppercase tracking-wider text-[var(--ui-muted)] border-b border-[var(--ui-border)]/60 min-w-[200px]">Zeile</th>
+                                <th class="sticky left-0 top-0 z-30 bg-[var(--ui-surface-solid)] text-left px-4 py-2.5 font-medium text-[11px] uppercase tracking-wider text-[var(--ui-muted)] border-b border-[var(--ui-border)]/60 min-w-[200px]">Zeile</th>
                                 @if($zoomed)
-                                    <th class="bg-[var(--ui-primary)]/[0.04] text-right px-4 py-2.5 border-b border-r border-[var(--ui-border)]/60 whitespace-nowrap min-w-[120px]">
+                                    <th class="sticky top-0 z-20 bg-[var(--ui-surface-solid)] text-right px-4 py-2.5 border-b border-r border-[var(--ui-border)]/60 whitespace-nowrap min-w-[120px]">
                                         <div class="text-xs font-semibold text-[var(--ui-secondary)]">{{ $breadcrumb[count($breadcrumb)-1]['label'] }}</div>
                                         <div class="text-[10px] font-normal text-[var(--ui-muted)]">Ebene gesamt</div>
                                     </th>
                                 @endif
                                 @foreach($columns as $col)
                                     @php $st = $colStatus[$col['bucket']] ?? ['state' => 'mixed', 'days' => null]; @endphp
-                                    <th class="group/col bg-[var(--ui-muted-5)] text-right px-3 py-2.5 border-b border-[var(--ui-border)]/60 whitespace-nowrap min-w-[96px]
+                                    <th class="group/col sticky top-0 z-20 bg-[var(--ui-surface-solid)] text-right px-3 py-2.5 border-b border-[var(--ui-border)]/60 whitespace-nowrap min-w-[96px]
                                         {{ $canZoom ? 'cursor-pointer hover:bg-[var(--ui-primary)]/[0.06] transition-colors' : '' }}
                                         {{ $st['state'] === 'closed' ? 'opacity-60' : '' }}"
                                         @if($canZoom) wire:click="zoom('{{ $col['bucket'] }}')" @endif>
@@ -302,7 +302,7 @@
                                 @php $lastSection = $sec; @endphp
                                 <tr class="group/row {{ $isF ? 'bg-[var(--ui-muted-5)]/40' : '' }}">
                                     {{-- Zeilen-Kopf --}}
-                                    <td class="sticky left-0 z-10 {{ $isF ? 'bg-[var(--ui-muted-5)]/80' : 'bg-[var(--ui-surface)]' }} group-hover/row:bg-[var(--ui-muted-5)] px-4 py-3 border-b border-[var(--ui-border)]/40 transition-colors">
+                                    <td class="sticky left-0 z-10 bg-[var(--ui-surface-solid)] {{ $isF ? 'shadow-[inset_0_0_0_100vw_var(--ui-muted-5)]' : '' }} px-4 py-3 border-b border-[var(--ui-border)]/40 transition-colors">
                                         <div class="flex items-center gap-1.5">
                                             @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span>@endif
                                             <span class="font-medium text-[var(--ui-secondary)]">{{ $row['label'] }}</span>

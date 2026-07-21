@@ -127,6 +127,15 @@ final class PlanService
         });
     }
 
+    /** Soft-Delete einer Planung (reversibel; Kind-Instanzen werden NICHT mitgelöscht). */
+    public function deletePlan(ForecastPlan $plan, ?int $userId = null): void
+    {
+        DB::transaction(function () use ($plan, $userId) {
+            $this->recordChange($plan, $userId, 'delete_plan', ['name' => $plan->name]);
+            $plan->delete();
+        });
+    }
+
     /** Erzeugt einen benannten Snapshot des aktuellen Stands (keine neue Version). */
     public function createSnapshot(ForecastPlan $plan, string $name, ?int $userId = null, ?string $note = null): ForecastSnapshot
     {

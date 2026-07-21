@@ -40,15 +40,15 @@
     <div x-show="!collapsed">
         @php
             $sbIcon = fn ($r) => match ($r) {
-                'master' => ['heroicon-o-square-3-stack-3d', 'text-indigo-500'],
+                'master' => ['heroicon-o-folder', 'text-indigo-500'],
                 'detail' => ['heroicon-o-magnifying-glass-plus', 'text-amber-500'],
-                default => ['heroicon-o-chart-bar-square', 'text-[var(--ui-primary)]'],
+                default => ['heroicon-o-document-chart-bar', 'text-emerald-500'],
             };
-            // Nur Einstiegspunkte: Master + Einzelpläne. Detailpläne erreicht man per
-            // Drill-down (🔍) aus dem Plan, der sie nutzt — ohne Kontext sind sie hier nutzlos.
+            // Nur Einstiegspunkte: Ordner + einzelne Blätter. Detailpläne erreicht man per
+            // Drill-down (🔍) aus dem Feld, das sie nutzt — ohne Kontext sind sie hier nutzlos.
             $groups = [
-                ['Master', $roots->filter(fn ($r) => ($planRole[$r->id] ?? '') === 'master')],
-                ['Einzelpläne', $roots->filter(fn ($r) => in_array($planRole[$r->id] ?? 'single', ['single', 'instance'], true))],
+                ['Ordner', $roots->filter(fn ($r) => ($planRole[$r->id] ?? '') === 'master')],
+                ['Einzelne Blätter', $roots->filter(fn ($r) => in_array($planRole[$r->id] ?? 'single', ['single', 'instance'], true))],
             ];
         @endphp
         @if($roots->isEmpty())

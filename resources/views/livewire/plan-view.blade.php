@@ -38,14 +38,15 @@
     $fmtRow = function ($rk, $v) use ($rowInfo, $fmt) {
         return ($rowInfo[$rk]['unit'] ?? '') === '%' ? number_format((float) $v, 1, ',', '.') : $fmt($v);
     };
-    // Rolle der aktuellen Planung — EIN kanonischer Begriffssatz, überall gleich: [Label, Icon, Text-Farbe, BG, Tooltip]
-    $roleMeta = [
-        'master'   => ['Master', 'heroicon-o-square-3-stack-3d', 'text-indigo-600', 'bg-indigo-500/10', 'Fasst mehrere Instanzen zu einem Gesamtbild zusammen. Die Zeilen unten sind ihre Summe.'],
-        'instance' => ['Instanz', 'heroicon-o-cube', 'text-emerald-600', 'bg-emerald-500/10', 'Eine einzelne Planung, die in einen Master einläuft und dort mitgezählt wird.'],
-        'detail'   => ['Detailplan', 'heroicon-o-magnifying-glass-plus', 'text-amber-600', 'bg-amber-500/10', 'Rechnet Details aus (z. B. Menge × Preis) und speist per Drill-down eine einzelne Zeile eines anderen Plans.'],
-        'single'   => ['Einzelplan', 'heroicon-o-chart-bar-square', 'text-[var(--ui-muted)]', 'bg-[var(--ui-muted-10)]', 'Eigenständige Planung — ohne Über- oder Unterplan.'],
-    ];
-    $mr = $roleMeta[$selfRole] ?? $roleMeta['single'];
+    // Ordner-Modell: eine Planung BÜNDELT untergeordnete (= Ordner) ODER erfasst Zahlen (= Blatt).
+    // Ordner/Blatt ist blickpunkt-unabhängig (ein Ordner bleibt Ordner, egal von wo man draufschaut).
+    // Drill-down (ein Feld hat eine eigene Planung dahinter) ist EXTRA und hängt an der Zeile.
+    $isFolder  = $isMaster;
+    $roleIcon  = $isFolder ? 'heroicon-o-folder' : 'heroicon-o-document-chart-bar';
+    $roleLabel = $isFolder ? 'Ordner' : 'Blatt';
+    $roleText  = $isFolder ? 'text-indigo-600' : 'text-emerald-600';
+    $roleBg    = $isFolder ? 'bg-indigo-500/10' : 'bg-emerald-500/10';
+    $roleTip   = $isFolder ? 'Ordner — bündelt untergeordnete Planungen zu einem Gesamtbild.' : 'Blatt — hier werden Zahlen erfasst.';
 @endphp
 
 <x-ui-page>
@@ -54,15 +55,22 @@
     </x-slot>
 
     <x-slot name="actionbar">
-        <x-ui-page-actionbar :breadcrumbs="[
-            ['label' => 'Forecast', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
-            ['label' => 'Planungen', 'href' => route('forecast.plans.index')],
-            ['label' => $plan->name],
-        ]">
-            {{-- Dauerhaft sichtbar (Leiste ist sticky): welche Rolle hat die aktuelle Planung --}}
+        @php
+            // Breadcrumb = Ordner-Pfad (Wurzel → … → hier): man sieht dauerhaft, wo man liegt.
+            $crumbs = [
+                ['label' => 'Forecast', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
+                ['label' => 'Planungen', 'href' => route('forecast.plans.index')],
+            ];
+            foreach ($ancestors as $anc) {
+                $crumbs[] = ['label' => $anc->name, 'href' => route('forecast.plans.show', ['uuid' => $anc->uuid])];
+            }
+            $crumbs[] = ['label' => $plan->name];
+        @endphp
+        <x-ui-page-actionbar :breadcrumbs="$crumbs">
+            {{-- Dauerhaft sichtbar (Leiste ist sticky): Ordner oder Blatt --}}
             <x-slot name="left">
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold {{ $mr[2] }} {{ $mr[3] }}" title="{{ $mr[4] }}">
-                    @svg($mr[1],'w-3 h-3') {{ $mr[0] }}
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold {{ $roleText }} {{ $roleBg }}" title="{{ $roleTip }}">
+                    @svg($roleIcon,'w-3 h-3') {{ $roleLabel }}
                 </span>
             </x-slot>
         </x-ui-page-actionbar>
@@ -77,8 +85,8 @@
                     <div class="min-w-0">
                         <h1 class="text-xl font-semibold tracking-tight text-[var(--ui-secondary)]">{{ $plan->name }}</h1>
                         <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold {{ $mr[2] }} {{ $mr[3] }}" title="{{ $mr[4] }}">
-                                @svg($mr[1],'w-3 h-3') {{ $mr[0] }}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold {{ $roleText }} {{ $roleBg }}" title="{{ $roleTip }}">
+                                @svg($roleIcon,'w-3 h-3') {{ $roleLabel }}
                             </span>
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">
                                 @svg('heroicon-o-squares-2x2','w-3 h-3') {{ $plan->planType?->name }}
@@ -100,18 +108,14 @@
                         </div>
                         {{-- Nette Ein-Zeilen-Erklärung, was diese Planung ist --}}
                         @php
-                            $explain = match($selfRole) {
-                                'master' => $subMasterCount > 0
-                                    ? "Fasst {$subMasterCount} Master mit zusammen {$leafCount} Instanzen zu einem Gesamtbild zusammen — die Zahlen unten sind ihre Summe."
-                                    : "Fasst {$childCount} Instanzen zu einem Gesamtbild zusammen — die Zahlen unten sind ihre Summe.",
-                                'instance' => $parentPlan
-                                    ? "Läuft ein in den Master „{$parentPlan->name}\" — wird dort mitgezählt."
-                                    : "Instanz — läuft in einen Master ein.",
-                                'detail' => count($usedIn)
-                                    ? "Speist per Drill-down eine Zeile in „".implode('“, „', $usedIn)."\"."
-                                    : "Detailplan — als Drill-down-Quelle vorgesehen.",
-                                default => "Eigenständige Planung — ohne Über- oder Unterplan.",
-                            };
+                            $folderPart = $isFolder
+                                ? ($subMasterCount > 0
+                                    ? "Ein Ordner: bündelt {$childCount} Planungen ({$leafCount} Blätter mit Zahlen insgesamt) — die Zahlen unten sind ihre Summe."
+                                    : "Ein Ordner: bündelt {$childCount} Blätter — die Zahlen unten sind ihre Summe.")
+                                : "Ein Blatt: hier werden die Zahlen erfasst.";
+                            $locPart = $parentPlan ? " Liegt im Ordner „{$parentPlan->name}“." : "";
+                            $drillPart = (! $isFolder && count($usedIn)) ? " Speist per Drill-down eine Zeile in „".implode('“, „', $usedIn)."“." : "";
+                            $explain = $folderPart.$locPart.$drillPart;
                         @endphp
                         <p class="mt-2 flex items-start gap-1.5 text-xs text-[var(--ui-muted)] max-w-2xl">
                             @svg('heroicon-o-information-circle','w-3.5 h-3.5 mt-px shrink-0 opacity-60')
@@ -183,11 +187,11 @@
                                 <div class="mt-3 text-[11px] text-[var(--ui-muted)]">berechnet aus {{ $sc }} {{ $sc === 1 ? 'Zeile' : 'Zeilen' }}</div>
                             @elseif($isMaster)
                                 <div class="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600">
-                                    @svg('heroicon-o-square-3-stack-3d','w-3.5 h-3.5')
+                                    @svg('heroicon-o-folder','w-3.5 h-3.5')
                                     @if($subMasterCount > 0)
-                                        konsolidiert aus {{ $subMasterCount }} Master · {{ $leafCount }} {{ $leafCount === 1 ? 'Instanz' : 'Instanzen' }}
+                                        bündelt {{ $childCount }} Planungen · {{ $leafCount }} {{ $leafCount === 1 ? 'Blatt' : 'Blätter' }}
                                     @else
-                                        konsolidiert aus {{ $childCount }} {{ $childCount === 1 ? 'Instanz' : 'Instanzen' }}
+                                        bündelt {{ $childCount }} {{ $childCount === 1 ? 'Blatt' : 'Blätter' }}
                                     @endif
                                 </div>
                             @else
@@ -411,19 +415,18 @@
         <x-ui-page-sidebar title="Navigation" width="w-72" :defaultOpen="true" storeKey="forecastNavOpen" side="left">
             <div class="p-4 space-y-6 text-sm">
 
-                {{-- Kontext: Konsolidierungs-Baum (Master → Instanzen) — nur was hier relevant ist --}}
+                {{-- Ordner-Struktur des aktuellen Kontexts (Ordner enthalten Ordner/Blätter) --}}
                 @php
                     $navIcon = fn ($r) => match ($r) {
-                        'master' => 'heroicon-o-square-3-stack-3d',
-                        'instance' => 'heroicon-o-cube',
+                        'master' => 'heroicon-o-folder',
                         'detail' => 'heroicon-o-magnifying-glass-plus',
-                        default => 'heroicon-o-chart-bar-square',
+                        default => 'heroicon-o-document-chart-bar',
                     };
                 @endphp
                 @if($contextRoots->isNotEmpty())
                     <div>
                         <div class="flex items-center justify-between mb-2.5">
-                            <h3 class="text-[10px] font-semibold uppercase tracking-wider text-[var(--ui-muted)]">Konsolidierung</h3>
+                            <h3 class="text-[10px] font-semibold uppercase tracking-wider text-[var(--ui-muted)]">Struktur</h3>
                             <a href="{{ route('forecast.plans.index') }}" wire:navigate class="text-[10px] text-[var(--ui-muted)] hover:text-[var(--ui-primary)]">Alle</a>
                         </div>
                         <div class="space-y-0.5">
@@ -446,7 +449,7 @@
                 {{-- Verbundene Pläne im Kontext (Detailpläne / Einzelplan) --}}
                 @if($contextOther->isNotEmpty())
                     <div>
-                        <h3 class="text-[10px] font-semibold uppercase tracking-wider text-[var(--ui-muted)] mb-2.5">{{ $contextRoots->isNotEmpty() ? 'Detail-Pläne' : 'Planung' }}</h3>
+                        <h3 class="text-[10px] font-semibold uppercase tracking-wider text-[var(--ui-muted)] mb-2.5">{{ $contextRoots->isNotEmpty() ? 'Detailpläne (Drill-down)' : 'Planung' }}</h3>
                         <div class="space-y-0.5">
                             @foreach($contextOther as $op)
                                 @php $cur = $op->uuid === $plan->uuid; @endphp
@@ -484,9 +487,9 @@
 
                 {{-- Legende: was die Icons bedeuten --}}
                 <div class="pt-3 border-t border-[var(--ui-border)]/40 space-y-1.5 text-[10px] text-[var(--ui-muted)]">
-                    <div class="flex items-center gap-1.5">@svg('heroicon-o-square-3-stack-3d','w-3 h-3 text-indigo-500') Master — konsolidiert Instanzen</div>
-                    <div class="flex items-center gap-1.5">@svg('heroicon-o-cube','w-3 h-3 text-emerald-500') Instanz — läuft in einen Master ein</div>
-                    <div class="flex items-center gap-1.5">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3 text-amber-500') Detailplan — speist eine Zeile (Drill-down)</div>
+                    <div class="flex items-center gap-1.5">@svg('heroicon-o-folder','w-3 h-3 text-indigo-500') Ordner — bündelt Planungen</div>
+                    <div class="flex items-center gap-1.5">@svg('heroicon-o-document-chart-bar','w-3 h-3 text-emerald-500') Blatt — hier werden Zahlen erfasst</div>
+                    <div class="flex items-center gap-1.5">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3 text-amber-500') Drill-down — Feld mit eigener Planung dahinter</div>
                     <div class="flex items-center gap-1.5">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-[var(--ui-primary)]/60') Zelle hat feineres Detail — reinzoomen</div>
                     <div class="flex items-center gap-1.5">@svg('heroicon-o-exclamation-triangle','w-3 h-3 text-amber-500') nur teilweise Detail — Kennzahl unvollständig</div>
                 </div>

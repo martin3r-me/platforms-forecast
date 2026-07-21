@@ -1,24 +1,20 @@
 {{--
-    Rekursiver Navigations-Knoten (Konsolidierungs-Baum im Kontext).
-    Erwartet: $node, $depth, $currentUuid, $ancestorIds, $childrenByParent, $planRole, $componentSet
-    Rolle bestimmt das Icon: Master · Instanz · Detail · Einzel. Aktueller Plan = Highlight.
+    Rekursiver Ordner-Baum-Knoten. Erwartet: $node, $depth, $currentUuid, $ancestorIds,
+    $childrenByParent, $planRole, $componentSet, $drillConsumerIds.
+    Icon: hat Kinder → Ordner, sonst → Blatt. 🔍 = Zeile mit Drill-down. Aktuell = Highlight.
 --}}
 @php
     $isCurrent = $node->uuid === $currentUuid;
     $onPath = ! $isCurrent && in_array($node->id, $ancestorIds ?? [], true);
-    $role = $planRole[$node->id] ?? 'single';
-    $icon = match ($role) {
-        'master' => 'heroicon-o-square-3-stack-3d',
-        'instance' => 'heroicon-o-cube',
-        'detail' => 'heroicon-o-magnifying-glass-plus',
-        default => 'heroicon-o-chart-bar-square',
-    };
+    $kids = collect($childrenByParent[$node->id] ?? [])->filter(fn ($c) => empty($componentSet) || isset($componentSet[$c->id]));
+    $icon = $kids->count()
+        ? ($isCurrent ? 'heroicon-o-folder-open' : 'heroicon-o-folder')
+        : 'heroicon-o-document-chart-bar';
     $cls = $isCurrent
         ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-semibold ring-1 ring-[var(--ui-primary)]/20'
         : ($onPath
             ? 'text-[var(--ui-secondary)] font-semibold hover:bg-[var(--ui-muted-10)]'
             : 'text-[var(--ui-secondary)] hover:text-[var(--ui-primary)] hover:bg-[var(--ui-muted-10)]');
-    $kids = collect($childrenByParent[$node->id] ?? [])->filter(fn ($c) => empty($componentSet) || isset($componentSet[$c->id]));
 @endphp
 
 <a href="{{ route('forecast.plans.show', ['uuid' => $node->uuid]) }}" wire:navigate
@@ -28,7 +24,7 @@
     @svg($icon, 'w-3.5 h-3.5 shrink-0 '.($isCurrent ? '' : 'opacity-70'))
     <span class="truncate text-sm">{{ $node->name }}</span>
     @if(in_array($node->id, $drillConsumerIds ?? [], true))
-        <span class="shrink-0 text-amber-500" title="hat einen Drill-down auf einen Detailplan">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3')</span>
+        <span class="shrink-0 text-amber-500" title="hat ein Feld mit eigener Planung dahinter (Drill-down)">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3')</span>
     @endif
     @if($kids->count())
         <span class="ml-auto text-[9px] font-medium text-[var(--ui-muted)]/60 shrink-0">{{ $kids->count() }}</span>

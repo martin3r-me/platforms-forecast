@@ -251,6 +251,16 @@ class PlanView extends Component
         }
         $ancestors = array_reverse($ancestors); // Wurzel zuerst
 
+        // Kompletter Plan-Baum des Teams (immer sichtbar in der Nav, aktueller Plan markiert)
+        $allPlans = ForecastPlan::where('team_id', $plan->team_id)
+            ->orderBy('name')
+            ->get(['id', 'uuid', 'name', 'parent_plan_id']);
+        $childrenByParent = $allPlans->groupBy('parent_plan_id');
+        $planIds = $allPlans->pluck('id')->all();
+        $rootPlans = $allPlans->filter(fn ($pp) => $pp->parent_plan_id === null || ! in_array($pp->parent_plan_id, $planIds, true))->values();
+        $ancestorIds = array_map(fn ($a) => $a->id, $ancestors);
+        $ancestorIds[] = $plan->id;
+
         $detailPlans = [];
         foreach ($rowInfo as $ri) {
             foreach (($ri['refPlans'] ?? []) as $rp) {
@@ -267,6 +277,9 @@ class PlanView extends Component
             'fromPlan' => $fromPlan,
             'ancestors' => $ancestors,
             'detailPlans' => $detailPlans,
+            'rootPlans' => $rootPlans,
+            'childrenByParent' => $childrenByParent,
+            'ancestorIds' => $ancestorIds,
             'delta' => $delta,
             'showDelta' => $this->showDelta,
             'share' => $share,

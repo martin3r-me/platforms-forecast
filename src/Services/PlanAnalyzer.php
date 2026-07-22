@@ -83,6 +83,7 @@ final class PlanAnalyzer
                 'time_agg' => $info['timeAgg'] ?? 'flow',
                 'agg' => $info['agg'] ?? null,
                 'agg_label' => $info['aggLabel'] ?? null,
+                'expr' => $info['expr'] ?? null,
                 'source_count' => $info['sourceCount'] ?? 0,
                 'ref_plans' => array_map(fn ($r) => [
                     'uuid' => $r['uuid'] ?? null, 'name' => $r['name'] ?? null, 'row_key' => $r['row_key'] ?? null,

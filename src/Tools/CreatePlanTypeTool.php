@@ -54,7 +54,11 @@ class CreatePlanTypeTool implements ToolContract, ToolMetadataContract
                             'section' => ['type' => 'string', 'description' => 'Optionale Sektion (Zeilen-Gruppe), z. B. "Umsatzerlöse". Aufeinanderfolgende Zeilen gleicher Sektion werden gruppiert.'],
                             'quote_basis' => ['type' => 'string', 'description' => 'Optional: Key einer Referenz-Zeile; zeigt bei „Anteil %" die Quote Betrag ÷ Referenz (z. B. Kostenzeile ÷ "gesamtleistung.betrag").'],
                             'time_agg' => ['type' => 'string', 'enum' => ['flow', 'stock', 'stock_open', 'avg'], 'description' => 'Zeit-Aggregation: flow (Default, summiert über die Zeit — Umsatz/Kosten) · stock (Bestand, Schlusswert = jüngster Teilzeitraum — Personal/Bestand/Cash/Schulden; Q1=März, nicht Σ) · stock_open (Eröffnungswert) · avg (Durchschnitt — Ø Personal/Auslastung).'],
-                            'config' => ['type' => 'object', 'description' => 'Bei formula: {agg, sources}.'],
+                            'config' => ['type' => 'object', 'description' => 'Bei formula ENTWEDER {agg, sources} ODER {expr}. '
+                                .'expr = freie Ausdruck-Formel je Bucket, Referenzen auf andere Zeilen als [row.key]: '
+                                .'z. B. "[preis] * [menge] - [rabatt]" oder "IF([umsatz] > 100000, [umsatz]*0.1, [umsatz]*0.05)". '
+                                .'Operatoren + - * / % > < >= <= == != && || ! und ?: · Funktionen IF, MIN, MAX, SUM, ABS, ROUND, FLOOR, CEIL, CLAMP. '
+                                .'Referenzierte Zeilen sollten vorher definiert sein (Auswertung in Zeilen-Reihenfolge).'],
                             'order' => ['type' => 'integer'],
                         ],
                         'required' => ['key'],

@@ -70,11 +70,12 @@ final class PlanReconciler
                 'quoteBasis' => $row->config['quote_basis'] ?? null,
                 'timeAgg' => $row->config['time_agg'] ?? (($isFormula && $agg === 'cumulative') ? 'stock' : 'flow'),
                 'agg' => $agg,
+                'expr' => $isFormula ? ($row->config['expr'] ?? null) : null,
                 'sources' => $samePlanKeys,
                 'refPlans' => $refPlans,
                 'sourceCount' => count($samePlanKeys) + count($refPlans),
                 'signMode' => Aggregation::signMode($isFormula, $agg),
-                'aggLabel' => $isFormula ? Aggregation::label($agg) : null,
+                'aggLabel' => $isFormula ? (! empty($row->config['expr']) ? '= Ausdruck' : Aggregation::label($agg)) : null,
                 'warnings' => [],
             ];
         }
@@ -214,6 +215,14 @@ final class PlanReconciler
                 continue;
             }
 
+            // Ausdruck-Zeile (config.expr): freie Formel über [row.key] je Bucket auswerten.
+            $expr = $rowInfo[$row->key]['expr'] ?? null;
+            if ($expr !== null && $expr !== '') {
+                $rows[$row->key]['cells'] = $this->expressionCells((string) $expr, $rows, $rowInfo[$row->key]['warnings']);
+
+                continue;
+            }
+
             $sources = [];
             foreach ($row->sources as $src) {
                 if ($src->source_plan_id === null) {
@@ -307,6 +316,14 @@ final class PlanReconciler
             if (! $rowInfo[$k]['isFormula']) {
                 continue;
             }
+            if (! empty($rowInfo[$k]['expr'])) {
+                // Ausdruck: Jahres-Total = Ausdruck auf Jahres-Ebene (bereits als Jahr-Zelle berechnet).
+                $cc = $rows[$k]['cells'] ?? [];
+                $years = array_filter($cc, fn ($c) => ($c['level'] ?? '') === 'year');
+                $totals[$k] = $years ? round(reset($years)['value'], 4) : 0.0;
+
+                continue;
+            }
             if ($rowInfo[$k]['agg'] === 'cumulative') {
                 // Fortschreibung: Jahres-Total = jüngster Schluss (nicht Aggregation der Quell-Totals).
                 $cc = $rows[$k]['cells'] ?? [];
@@ -392,6 +409,46 @@ final class PlanReconciler
                 ];
                 $k = TimeAxis::parentKey($k);
             } while ($k !== null);
+        }
+        ksort($cells);
+
+        return $cells;
+    }
+
+    /**
+     * Ausdruck-Zeile: config.expr je Bucket auswerten. Referenzen [row.key] lösen auf den
+     * Wert dieser Zeile im selben Bucket auf. Buckets = Vereinigung der referenzierten Zeilen.
+     *
+     * @param  array<string, array>  $rows
+     * @param  list<string>  $warnings  per Referenz — Parse-Fehler wird hier vermerkt
+     * @return array<string, array>
+     */
+    private function expressionCells(string $expr, array $rows, array &$warnings): array
+    {
+        try {
+            $compiled = ExpressionEvaluator::compile($expr);
+        } catch (\Throwable $e) {
+            $warnings[] = 'Ausdruck ungültig: '.$e->getMessage();
+
+            return [];
+        }
+
+        $buckets = [];
+        foreach ($compiled['refs'] as $rk) {
+            foreach (array_keys($rows[$rk]['cells'] ?? []) as $b) {
+                $buckets[$b] = true;
+            }
+        }
+
+        $cells = [];
+        foreach (array_keys($buckets) as $b) {
+            $resolve = fn (string $key): float => (float) ($rows[$key]['cells'][$b]['value'] ?? 0.0);
+            $cells[$b] = [
+                'level' => TimeLevel::fromKey($b)->value,
+                'entered' => false, 'mode' => null,
+                'value' => round(ExpressionEvaluator::evaluate($compiled, $resolve), 4),
+                'rest' => 0.0, 'derived' => true,
+            ];
         }
         ksort($cells);
 

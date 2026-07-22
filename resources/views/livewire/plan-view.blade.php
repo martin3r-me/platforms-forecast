@@ -103,9 +103,15 @@
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">
                                 @svg('heroicon-o-clock','w-3 h-3') Version {{ $plan->current_version }}
                             </span>
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">
-                                @svg('heroicon-o-eye','w-3 h-3') Nur Ansicht
-                            </span>
+                            @if($editMode)
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium">
+                                    @svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten
+                                </span>
+                            @else
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">
+                                    @svg('heroicon-o-eye','w-3 h-3') Nur Ansicht
+                                </span>
+                            @endif
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-muted-10)] text-[var(--ui-muted)]" title="Vorlauf: öffnet X Tage vor Periodenstart · Nachlauf: bleibt Y Tage nach Periodenende offen">
                                 @svg('heroicon-o-lock-closed','w-3 h-3') Vorlauf {{ $lock['lead_days'] }} T · Nachlauf {{ $lock['grace_days'] }} T
                             </span>
@@ -234,6 +240,13 @@
                     {{-- Tier 2: Anzeige-Optionen + Legende --}}
                     <div class="flex flex-wrap items-center justify-between gap-2 px-4 pb-2.5">
                         <div class="flex items-center gap-2">
+                            <button type="button" wire:click="toggleEdit"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors
+                                    {{ $editMode ? 'bg-[var(--ui-primary)] text-[var(--ui-on-primary)]' : 'text-[var(--ui-primary)] ring-1 ring-[var(--ui-primary)]/30 hover:bg-[var(--ui-primary)]/10' }}"
+                                title="Nur offene Zellen werden zum Tippfeld. Geschlossene/berechnete/abgeleitete bleiben gesperrt.">
+                                @svg('heroicon-o-pencil-square','w-3.5 h-3.5') {{ $editMode ? 'Fertig' : 'Bearbeiten' }}
+                            </button>
+                            <span class="text-[var(--ui-muted)]/30">·</span>
                             @if($canZoom)
                                 <span class="inline-flex items-center gap-1 text-[11px] text-[var(--ui-muted)]" title="Auf einen Spaltenkopf klicken, um in diese Periode zu zoomen">@svg('heroicon-o-cursor-arrow-rays','w-3.5 h-3.5') Spalte anklicken = rein</span>
                                 <span class="text-[var(--ui-muted)]/30">·</span>
@@ -257,6 +270,16 @@
                             <span class="inline-flex items-center gap-1" title="Zu: Periode geschlossen — keine Eingabe">@svg('heroicon-o-lock-closed','w-3 h-3 text-[var(--ui-muted)]/60') zu</span>
                         </div>
                     </div>
+
+                    @if($editMode)
+                        <div class="px-4 pb-2.5 flex items-center gap-2 text-[11px]">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium">@svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten aktiv</span>
+                            <span class="text-[var(--ui-muted)]">Nur getönte „offene" Felder sind tippbar · Enter/Tab speichert.</span>
+                            @if($cellError)
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 font-medium ml-auto">@svg('heroicon-o-exclamation-triangle','w-3 h-3') {{ $cellError }}</span>
+                            @endif
+                        </div>
+                    @endif
                 </div>
 
                 <div class="overflow-auto max-h-[72vh]">
@@ -395,7 +418,23 @@
                                                 @endif
                                             @else
                                                 @php $cell = $row['cells'][$col['bucket']] ?? null; @endphp
-                                                @if($cell && ($cell['entered'] || $cell['value'] != 0))
+                                                @if($editMode && $cellState === 'open')
+                                                    {{-- Tippfeld: nur offene Zellen im Bearbeiten-Modus. Enter/Tab speichert (durchs Editier-Tor). --}}
+                                                    @php
+                                                        $isFu = $rowInfo[$rowKey]['isFactor'] ?? false;
+                                                        $cv = $cell['value'] ?? null;
+                                                        $pf = ($cell && ($cell['entered'] ?? false))
+                                                            ? rtrim(rtrim(number_format($isFu ? $cv * 100 : (float) $cv, 4, '.', ''), '0'), '.')
+                                                            : '';
+                                                    @endphp
+                                                    <input type="text" inputmode="decimal" value="{{ $pf }}"
+                                                        wire:key="in-{{ $rowKey }}-{{ $col['bucket'] }}"
+                                                        @keydown.enter.prevent="$el.blur()"
+                                                        @keydown.escape="$el.value='{{ $pf }}'; $el.blur()"
+                                                        @blur="$wire.saveCell('{{ $rowKey }}', '{{ $col['bucket'] }}', $el.value)"
+                                                        class="w-full text-right tabular-nums bg-[var(--ui-surface-solid)] border border-[var(--ui-primary)]/50 rounded px-1.5 py-1 text-sm text-[var(--ui-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-primary)]/40 focus:border-[var(--ui-primary)]"
+                                                        placeholder="Wert…" />
+                                                @elseif($cell && ($cell['entered'] || $cell['value'] != 0))
                                                     @php
                                                         $val = $cell['value'];
                                                         $committed = $meta[$rowKey]['cellCommitted'][$col['bucket']] ?? $val;

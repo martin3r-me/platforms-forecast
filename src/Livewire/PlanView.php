@@ -14,8 +14,10 @@ use Platform\Forecast\Models\ForecastRowSource;
 use Platform\Forecast\Reconciliation\Mode;
 use Platform\Forecast\Reconciliation\TimeAxis;
 use Platform\Forecast\Services\Aggregation;
+use Platform\Forecast\Services\CellEditability;
 use Platform\Forecast\Services\LockService;
 use Platform\Forecast\Services\PlanReconciler;
+use Platform\Forecast\Services\PlanService;
 
 /**
  * Read-only Ansicht einer Planung: Zeilen × Zeit-Grid mit Zoom.
@@ -38,6 +40,12 @@ class PlanView extends Component
     /** Delta-Ansicht: Veränderung je Zelle zur vorherigen Spalte (absolut + %). */
     public bool $showDelta = false;
 
+    /** Bearbeiten-Modus: nur „open"-Zellen werden zum Tippfeld (Opt-in, Default aus). */
+    public bool $editMode = false;
+
+    /** Letzte Ablehnung/Fehlermeldung des Editier-Tors (für den Nutzer). */
+    public ?string $cellError = null;
+
     public function mount(string $uuid): void
     {
         $this->uuid = $uuid;
@@ -59,6 +67,75 @@ class PlanView extends Component
     public function toggleDelta(): void
     {
         $this->showDelta = ! $this->showDelta;
+    }
+
+    public function toggleEdit(): void
+    {
+        $this->editMode = ! $this->editMode;
+        $this->cellError = null;
+    }
+
+    /**
+     * Eine „open"-Zelle speichern (UI-Pfad → Editier-Tor greift). Leerer Wert = löschen.
+     * Faktor-Zeilen (Anzeige als %) werden beim Speichern ÷100 zurückgerechnet.
+     */
+    public function saveCell(string $rowKey, string $bucket, string $value): void
+    {
+        $this->cellError = null;
+        $plan = $this->plan();
+        $service = new PlanService();
+
+        try {
+            $raw = trim($value);
+
+            // Faktor? (Einheit FAKTOR wird als % angezeigt → beim Speichern /100)
+            $isFactor = false;
+            foreach ($plan->resolvedRows() as $r) {
+                if ($r->key === $rowKey) {
+                    $isFactor = ($r->unit?->code === 'FAKTOR');
+                    break;
+                }
+            }
+
+            if ($raw === '') {
+                // Löschen — ebenfalls durchs Tor.
+                $gate = (new CellEditability())->check($plan, $rowKey, $bucket);
+                if (! $gate['editable']) {
+                    throw new \DomainException($gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.');
+                }
+                $service->clearCell($plan, $rowKey, $bucket, Auth::id());
+
+                return;
+            }
+
+            $num = $this->parseNumber($raw);
+            if ($num === null) {
+                $this->cellError = 'Bitte eine Zahl eingeben.';
+
+                return;
+            }
+            if ($isFactor) {
+                $num /= 100;
+            }
+
+            $service->setCell($plan, $rowKey, $bucket, $num, Mode::Detail, Auth::id(), enforceGate: true);
+        } catch (\DomainException $e) {
+            $this->cellError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->cellError = 'Konnte nicht speichern.';
+        }
+    }
+
+    /** Zahl aus Eingabe lesen — akzeptiert deutsch (1.234,56) und einfach (1234.56 / 1234). */
+    protected function parseNumber(string $raw): ?float
+    {
+        $s = str_replace([' ', "\u{00a0}", '€', '%'], '', $raw);
+        if (str_contains($s, ',')) {
+            $s = str_replace('.', '', $s);   // Tausenderpunkte
+            $s = str_replace(',', '.', $s);  // Dezimalkomma
+        }
+
+        return is_numeric($s) ? (float) $s : null;
     }
 
     protected function plan(): ForecastPlan

@@ -321,6 +321,9 @@ class PlanView extends Component
             if (! ($rowInfo[$rk]['isFormula'] ?? false)) {
                 continue;
             }
+            if (($rowInfo[$rk]['agg'] ?? '') === 'cumulative') {
+                continue; // Fortschreibung: fehlende Quelle je Periode ist normal (Anfangsbestand nur am Start) — kein Teil-Detail
+            }
             $srcs = $rowInfo[$rk]['sources'] ?? [];
             if (count($srcs) < 2) {
                 continue;

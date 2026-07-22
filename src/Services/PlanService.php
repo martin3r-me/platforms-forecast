@@ -82,8 +82,16 @@ final class PlanService
     }
 
     /** Setzt eine Zelle (value + mode) → neue Version. */
-    public function setCell(ForecastPlan $plan, string $rowKey, string $bucketKey, float $value, Mode $mode, ?int $userId = null): ForecastEntry
+    public function setCell(ForecastPlan $plan, string $rowKey, string $bucketKey, float $value, Mode $mode, ?int $userId = null, bool $enforceGate = false): ForecastEntry
     {
+        // Editier-Tor: nur für die UI (enforceGate=true); MCP/Admin schreibt frei.
+        if ($enforceGate) {
+            $gate = (new CellEditability())->check($plan, $rowKey, $bucketKey);
+            if (! $gate['editable']) {
+                throw new \DomainException($gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.');
+            }
+        }
+
         return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $value, $mode, $userId) {
             $level = TimeLevel::fromKey($bucketKey);
 

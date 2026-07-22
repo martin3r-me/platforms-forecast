@@ -226,6 +226,8 @@ class ForecastServiceProvider extends ServiceProvider
             $registry->register(new \Platform\Forecast\Tools\CreateDistributionPolicyTool());
             $registry->register(new \Platform\Forecast\Tools\UpdateDistributionPolicyTool());
             $registry->register(new \Platform\Forecast\Tools\DeleteDistributionPolicyTool());
+            $registry->register(new \Platform\Forecast\Tools\ListLockPoliciesTool());
+            $registry->register(new \Platform\Forecast\Tools\SetLockPolicyTool());
             $registry->register(new \Platform\Forecast\Tools\SetCellTool());
             $registry->register(new \Platform\Forecast\Tools\ClearCellTool());
             $registry->register(new \Platform\Forecast\Tools\RollupTool());

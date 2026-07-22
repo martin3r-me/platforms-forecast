@@ -18,6 +18,15 @@ use Platform\Forecast\Reconciliation\TimeAxis;
 final class PlanReconciler
 {
     /**
+     * Memoisierung je Plan-ID: derselbe Unterplan (als Kind konsolidiert UND per Drill-down
+     * referenziert, oder mehrfach im Baum) wird nur einmal gerechnet. Gültig pro Instanz =
+     * pro view()-Aufruf; die Daten ändern sich innerhalb eines Requests nicht.
+     *
+     * @var array<int, array>
+     */
+    private array $memo = [];
+
+    /**
      * @return array{plan: array, rows: array<string, array>, rowInfo: array<string, array>}
      */
     public function view(ForecastPlan $plan): array
@@ -31,7 +40,11 @@ final class PlanReconciler
     private function compute(ForecastPlan $plan, array $visiting): array
     {
         if (in_array($plan->id, $visiting, true)) {
+            // Zyklus: NICHT cachen (unvollständiges Ergebnis).
             return ['plan' => $this->planMeta($plan), 'rows' => [], 'rowInfo' => []];
+        }
+        if (isset($this->memo[$plan->id])) {
+            return $this->memo[$plan->id];
         }
         $visiting[] = $plan->id;
 
@@ -380,7 +393,10 @@ final class PlanReconciler
             $totals[$k] = $yearVal;
         }
 
-        return ['plan' => $this->planMeta($plan), 'rows' => $rows, 'rowInfo' => $rowInfo, 'totals' => $totals];
+        $result = ['plan' => $this->planMeta($plan), 'rows' => $rows, 'rowInfo' => $rowInfo, 'totals' => $totals];
+        $this->memo[$plan->id] = $result;
+
+        return $result;
     }
 
     /**

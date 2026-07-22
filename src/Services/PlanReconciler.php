@@ -73,6 +73,7 @@ final class PlanReconciler
                 'section' => $row->config['section'] ?? null,
                 'quoteBasis' => $row->config['quote_basis'] ?? null,
                 'timeAgg' => $row->config['time_agg'] ?? (($isFormula && $agg === 'cumulative') ? 'stock' : 'flow'),
+                'weightBy' => $row->config['weight_by'] ?? null,
                 'agg' => $agg,
                 'expr' => $isFormula ? ($row->config['expr'] ?? null) : null,
                 'sources' => $samePlanKeys,
@@ -354,7 +355,110 @@ final class PlanReconciler
             $totals[$k] = round(Aggregation::aggregate($rowInfo[$k]['agg'], $vals, $dirs), 4);
         }
 
+        // ── Gewichtetes Zeit-Mittel (time_agg=wavg): grobe Perioden + Total als
+        //    Σ(Wert×Gewicht) ÷ Σ(Gewicht) neu hochrollen. Läuft als letzte Instanz, damit
+        //    die Gewichts-Zeile (weight_by) und die feinen Werte fertig sind. Feine Zellen bleiben.
+        foreach ($resolved as $row) {
+            $k = $row->key;
+            if (($rowInfo[$k]['timeAgg'] ?? 'flow') !== 'wavg') {
+                continue;
+            }
+            $wKey = $rowInfo[$k]['weightBy'] ?? null;
+            if (! $wKey || ! isset($rows[$wKey])) {
+                $rowInfo[$k]['warnings'][] = 'Gewichteter Ø: Gewichts-Zeile (weight_by) fehlt oder existiert nicht.';
+
+                continue;
+            }
+            [$coarse, $yearVal] = $this->weightedRollup($rows[$k]['cells'] ?? [], $rows[$wKey]['cells'] ?? []);
+            foreach ($coarse as $b => $v) {
+                $rows[$k]['cells'][$b] = [
+                    'level' => TimeLevel::fromKey($b)->value, 'entered' => false, 'mode' => null,
+                    'value' => $v, 'rest' => 0.0, 'derived' => true,
+                ];
+            }
+            ksort($rows[$k]['cells']);
+            $totals[$k] = $yearVal;
+        }
+
         return ['plan' => $this->planMeta($plan), 'rows' => $rows, 'rowInfo' => $rowInfo, 'totals' => $totals];
+    }
+
+    /**
+     * Gewichtetes Zeit-Mittel: rollt die groben Perioden aus den FEINEN Werten neu hoch als
+     * Σ(Wert×Gewicht) ÷ Σ(Gewicht) (Gewicht = die weight_by-Zeile je feiner Periode). Ohne Gewicht
+     * (Σ=0) fällt es auf das einfache Mittel zurück. Feine Zellen bleiben unangetastet.
+     *
+     * @param  array<string,array>  $valCells
+     * @param  array<string,array>  $weightCells
+     * @return array{0: array<string,float>, 1: float}  [grobe Zellen (nur Vorfahren), Jahres-Wert]
+     */
+    private function weightedRollup(array $valCells, array $weightCells): array
+    {
+        $rank = ['year' => 0, 'quarter' => 1, 'month' => 2, 'day' => 3, 'hour' => 4];
+        $finest = -1;
+        foreach (array_keys($valCells) as $b) {
+            $finest = max($finest, $rank[TimeLevel::fromKey($b)->value] ?? 2);
+        }
+        if ($finest < 0) {
+            return [[], 0.0];
+        }
+        $finestLevel = array_search($finest, $rank, true);
+
+        // je Vorfahr: Σ(v·w) und Σw; global für Jahres-Wert
+        $num = [];
+        $den = [];
+        $gNum = 0.0;
+        $gDen = 0.0;
+        foreach ($valCells as $b => $c) {
+            if (TimeLevel::fromKey($b)->value !== $finestLevel) {
+                continue;
+            }
+            $v = (float) ($c['value'] ?? 0.0);
+            $w = (float) ($weightCells[$b]['value'] ?? 0.0);
+            $gNum += $v * $w;
+            $gDen += $w;
+            $p = TimeAxis::parentKey($b);
+            while ($p !== null) {
+                $num[$p] = ($num[$p] ?? 0.0) + $v * $w;
+                $den[$p] = ($den[$p] ?? 0.0) + $w;
+                $p = TimeAxis::parentKey($p);
+            }
+        }
+
+        // Fallback einfaches Mittel, wenn keine Gewichte
+        $simple = [];
+        if (array_filter($den) === []) {
+            $cnt = [];
+            $sum = [];
+            $gS = 0.0;
+            $gC = 0;
+            foreach ($valCells as $b => $c) {
+                if (TimeLevel::fromKey($b)->value !== $finestLevel) {
+                    continue;
+                }
+                $v = (float) ($c['value'] ?? 0.0);
+                $gS += $v;
+                $gC++;
+                $p = TimeAxis::parentKey($b);
+                while ($p !== null) {
+                    $sum[$p] = ($sum[$p] ?? 0.0) + $v;
+                    $cnt[$p] = ($cnt[$p] ?? 0) + 1;
+                    $p = TimeAxis::parentKey($p);
+                }
+            }
+            foreach ($sum as $b => $s) {
+                $simple[$b] = round($cnt[$b] ? $s / $cnt[$b] : 0.0, 4);
+            }
+
+            return [$simple, round($gC ? $gS / $gC : 0.0, 4)];
+        }
+
+        $coarse = [];
+        foreach ($num as $b => $n) {
+            $coarse[$b] = round(($den[$b] ?? 0.0) != 0.0 ? $n / $den[$b] : 0.0, 4);
+        }
+
+        return [$coarse, round($gDen != 0.0 ? $gNum / $gDen : 0.0, 4)];
     }
 
     /**

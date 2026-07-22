@@ -228,6 +228,15 @@ class ForecastServiceProvider extends ServiceProvider
             $registry->register(new \Platform\Forecast\Tools\DeleteDistributionPolicyTool());
             $registry->register(new \Platform\Forecast\Tools\ListLockPoliciesTool());
             $registry->register(new \Platform\Forecast\Tools\SetLockPolicyTool());
+            // Lese-/Analyse-Tools (Reporting-Fläche für Agenten)
+            $registry->register(new \Platform\Forecast\Tools\ViewPlanTool());
+            $registry->register(new \Platform\Forecast\Tools\ScanPlanTool());
+            $registry->register(new \Platform\Forecast\Tools\PlanStatusTool());
+            $registry->register(new \Platform\Forecast\Tools\ComparePlanTool());
+            $registry->register(new \Platform\Forecast\Tools\ExplainCellTool());
+            $registry->register(new \Platform\Forecast\Tools\SeriesTool());
+            $registry->register(new \Platform\Forecast\Tools\StructureTool());
+            $registry->register(new \Platform\Forecast\Tools\HistoryTool());
             $registry->register(new \Platform\Forecast\Tools\SetCellTool());
             $registry->register(new \Platform\Forecast\Tools\ClearCellTool());
             $registry->register(new \Platform\Forecast\Tools\RollupTool());

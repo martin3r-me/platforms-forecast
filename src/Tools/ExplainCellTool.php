@@ -64,11 +64,15 @@ class ExplainCellTool implements ToolContract, ToolMetadataContract
             $srcMap = [];
             foreach ($plan->resolvedRows() as $r) {
                 if ($r->kind->value === 'formula') {
-                    $srcMap[$r->key] = array_map(fn ($s) => [
-                        'key' => $s->source_row_key,
-                        'plan_id' => $s->source_plan_id,
-                        'weight' => (float) $s->weight,
-                    ], $r->sources);
+                    $src = [];
+                    foreach ($r->sources as $s) {
+                        $src[] = [
+                            'key' => $s->source_row_key,
+                            'plan_id' => $s->source_plan_id,
+                            'weight' => (float) $s->weight,
+                        ];
+                    }
+                    $srcMap[$r->key] = $src;
                 }
             }
 

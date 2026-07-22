@@ -314,6 +314,8 @@
                                         <div class="flex items-center gap-1.5">
                                             @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]" title="Berechnet: ergibt sich aus anderen Zeilen — nicht eingebbar">ƒ</span>@endif
                                             @if($isMaster && ! $isF)<span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600 inline-flex items-center gap-0.5" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch — hier nicht direkt eingebbar">↑</span>@endif
+                                            @php $ta = $rowInfo[$rowKey]['timeAgg'] ?? 'flow'; @endphp
+                                            @if($ta !== 'flow')<span class="text-[9px] font-semibold px-1 rounded bg-sky-500/10 text-sky-600" title="Bestand statt Fluss: rollt NICHT als Summe über die Zeit — {{ ['stock'=>'Schlusswert (Quartal = letzter Monat)','stock_open'=>'Eröffnungswert (erster Teilzeitraum)','avg'=>'Durchschnitt über die Teilzeiträume'][$ta] ?? $ta }}">{{ ['stock'=>'Bestand','stock_open'=>'Eröffnung','avg'=>'Ø'][$ta] ?? $ta }}</span>@endif
                                             <span class="font-medium text-[var(--ui-secondary)]">{{ $row['label'] }}</span>
                                             @if(!empty($rowInfo[$rowKey]['warnings']))
                                                 <span class="text-amber-600" title="Konsolidierung ausgelassen — {{ implode(' · ', $rowInfo[$rowKey]['warnings']) }}">@svg('heroicon-o-exclamation-triangle','w-3.5 h-3.5')</span>

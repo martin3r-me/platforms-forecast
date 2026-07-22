@@ -27,6 +27,16 @@ final class Node
     /** @var list<array{0: Node, 1: Mode}> */
     private array $children = [];
 
+    /**
+     * Zeit-Aggregation dieses Knotens (nur relevant auf der Zeitachse):
+     *   'flow'       — Fluss, summiert über Teilzeiträume (Umsatz, Kosten). Default.
+     *   'stock'      — Bestand, Schlusswert = jüngster Teilzeitraum (Personal, Cash, Schulden).
+     *   'stock_open' — Bestand, Eröffnungswert = ältester Teilzeitraum.
+     *   'avg'        — Durchschnitt über Teilzeiträume (Ø Personal, Ø Auslastung).
+     * Bestände addieren sich NICHT über die Zeit — Q1 ≠ Jan+Feb+Mär, sondern = Mär (Schluss).
+     */
+    public string $timeAgg = 'flow';
+
     public function __construct(
         public readonly string $key = '',
         public ?float $estimate = null,
@@ -69,12 +79,42 @@ final class Node
     /** Der aggregierte Wert dieses Knotens (rollt zu seinem Elternknoten hoch). */
     public function value(): float
     {
+        if ($this->timeAgg !== 'flow') {
+            return $this->stockValue();
+        }
+
         return max($this->estimate ?? 0.0, $this->detailSum()) + $this->plusSum();
+    }
+
+    /**
+     * Bestand: KEINE Zeit-Summe. Feinere Teilzeiträume (Kinder) bilden die Trajektorie;
+     * der Knoten nimmt Schluss/Eröffnung/Ø daraus. Ohne Detail gilt die eigene Schätzung.
+     */
+    private function stockValue(): float
+    {
+        $vals = [];
+        foreach ($this->children as [$child]) {
+            $vals[$child->key] = $child->value();
+        }
+        if ($vals === []) {
+            return $this->estimate ?? 0.0;
+        }
+        ksort($vals); // chronologisch (gleiche Ebene → String-Sortierung passt)
+
+        return match ($this->timeAgg) {
+            'stock_open' => (float) reset($vals),
+            'avg' => array_sum($vals) / count($vals),
+            default => (float) end($vals), // 'stock' = Schlusswert (jüngster)
+        };
     }
 
     /** Der noch offene (geschätzte, nicht konkretisierte) Teil. */
     public function rest(): float
     {
+        if ($this->timeAgg !== 'flow') {
+            return 0.0; // Bestände haben keinen zu verteilenden Rest
+        }
+
         return max(0.0, ($this->estimate ?? 0.0) - $this->detailSum());
     }
 }

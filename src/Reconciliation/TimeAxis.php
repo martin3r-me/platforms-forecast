@@ -19,9 +19,10 @@ final class TimeAxis
 {
     /**
      * @param  list<array{key:string, value:float, mode:Mode}>  $entries
+     * @param  string  $timeAgg  Zeit-Aggregation der Zeile (flow|stock|stock_open|avg)
      * @return array<string, Node>  Knoten-Map (bucketKey => Node), inkl. Wurzel(n)
      */
-    public static function build(array $entries): array
+    public static function build(array $entries, string $timeAgg = 'flow'): array
     {
         /** @var array<string, Node> $nodes */
         $nodes = [];
@@ -34,11 +35,12 @@ final class TimeAxis
         }
 
         // 2) Knoten (inkl. Elternkette) rekursiv sicherstellen und verdrahten.
-        $ensure = function (string $key) use (&$nodes, &$modeToParent, &$ensure): Node {
+        $ensure = function (string $key) use (&$nodes, &$modeToParent, &$ensure, $timeAgg): Node {
             if (isset($nodes[$key])) {
                 return $nodes[$key];
             }
             $node = new Node($key);
+            $node->timeAgg = $timeAgg;
             $nodes[$key] = $node;
 
             // Default für nicht explizit eingegebene (Zwischen-)Knoten: Detail.

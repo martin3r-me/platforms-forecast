@@ -68,6 +68,7 @@ final class PlanReconciler
                 'nonAdditive' => $row->unit?->dimension === 'ratio',
                 'section' => $row->config['section'] ?? null,
                 'quoteBasis' => $row->config['quote_basis'] ?? null,
+                'timeAgg' => $row->config['time_agg'] ?? 'flow',
                 'agg' => $agg,
                 'sources' => $samePlanKeys,
                 'refPlans' => $refPlans,
@@ -128,7 +129,7 @@ final class PlanReconciler
             }
 
             $rowEntries = $byRow[$row->key] ?? [];
-            $nodes = TimeAxis::build($rowEntries);
+            $nodes = TimeAxis::build($rowEntries, $rowInfo[$row->key]['timeAgg'] ?? 'flow');
             $enteredMode = [];
             foreach ($rowEntries as $re) {
                 $enteredMode[$re['key']] = $re['mode'];

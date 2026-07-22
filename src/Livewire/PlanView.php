@@ -145,8 +145,10 @@ class PlanView extends Component
                     }
                 }
                 $distribute = max(0, $value - $storedSum);
-                if ($rowInfo[$rk]['nonAdditive'] ?? false) {
-                    // Faktor/Quote ist nicht teilbar → konstant in jeder leeren feineren Periode.
+                $constantDown = ($rowInfo[$rk]['nonAdditive'] ?? false) || (($rowInfo[$rk]['timeAgg'] ?? 'flow') !== 'flow');
+                if ($constantDown) {
+                    // Nicht über die Zeit teilbar (Faktor/Quote ODER Bestand/Ø) → konstant in
+                    // jeder leeren feineren Periode: der Jahreswert „ist" auch der Monatswert.
                     foreach ($emptyBuckets as $b) {
                         $spreadBy[$b] = round($value, 6);
                     }

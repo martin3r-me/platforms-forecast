@@ -80,6 +80,7 @@ final class PlanAnalyzer
                 'is_formula' => $isF,
                 'is_factor' => (bool) ($info['isFactor'] ?? false),
                 'non_additive' => (bool) ($info['nonAdditive'] ?? false),
+                'time_agg' => $info['timeAgg'] ?? 'flow',
                 'agg' => $info['agg'] ?? null,
                 'agg_label' => $info['aggLabel'] ?? null,
                 'source_count' => $info['sourceCount'] ?? 0,

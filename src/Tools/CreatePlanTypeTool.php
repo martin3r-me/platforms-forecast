@@ -50,6 +50,7 @@ class CreatePlanTypeTool implements ToolContract, ToolMetadataContract
                             'direction' => ['type' => 'string', 'enum' => ['income', 'expense', 'neutral']],
                             'section' => ['type' => 'string', 'description' => 'Optionale Sektion (Zeilen-Gruppe), z. B. "Umsatzerlöse". Aufeinanderfolgende Zeilen gleicher Sektion werden gruppiert.'],
                             'quote_basis' => ['type' => 'string', 'description' => 'Optional: Key einer Referenz-Zeile; zeigt bei „Anteil %" die Quote Betrag ÷ Referenz (z. B. Kostenzeile ÷ "gesamtleistung.betrag").'],
+                            'time_agg' => ['type' => 'string', 'enum' => ['flow', 'stock', 'stock_open', 'avg'], 'description' => 'Zeit-Aggregation: flow (Default, summiert über die Zeit — Umsatz/Kosten) · stock (Bestand, Schlusswert = jüngster Teilzeitraum — Personal/Bestand/Cash/Schulden; Q1=März, nicht Σ) · stock_open (Eröffnungswert) · avg (Durchschnitt — Ø Personal/Auslastung).'],
                             'config' => ['type' => 'object', 'description' => 'Bei formula: {agg, sources}.'],
                             'order' => ['type' => 'integer'],
                         ],

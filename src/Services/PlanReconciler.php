@@ -218,7 +218,7 @@ final class PlanReconciler
             // Ausdruck-Zeile (config.expr): freie Formel über [row.key] je Bucket auswerten.
             $expr = $rowInfo[$row->key]['expr'] ?? null;
             if ($expr !== null && $expr !== '') {
-                $rows[$row->key]['cells'] = $this->expressionCells((string) $expr, $rows, $rowInfo[$row->key]['warnings']);
+                $rows[$row->key]['cells'] = $this->expressionCells((string) $expr, $rows, $rowInfo[$row->key]['warnings'], $rowInfo[$row->key]['timeAgg'] ?? 'flow');
 
                 continue;
             }
@@ -423,7 +423,7 @@ final class PlanReconciler
      * @param  list<string>  $warnings  per Referenz — Parse-Fehler wird hier vermerkt
      * @return array<string, array>
      */
-    private function expressionCells(string $expr, array $rows, array &$warnings): array
+    private function expressionCells(string $expr, array $rows, array &$warnings, string $timeAgg): array
     {
         try {
             $compiled = ExpressionEvaluator::compile($expr);
@@ -433,22 +433,71 @@ final class PlanReconciler
             return [];
         }
 
-        $buckets = [];
+        $allBuckets = [];
         foreach ($compiled['refs'] as $rk) {
             foreach (array_keys($rows[$rk]['cells'] ?? []) as $b) {
-                $buckets[$b] = true;
+                $allBuckets[$b] = true;
             }
         }
+        if ($allBuckets === []) {
+            return [];
+        }
+
+        $mk = fn (string $b, float $v): array => [
+            'level' => TimeLevel::fromKey($b)->value, 'entered' => false, 'mode' => null,
+            'value' => round($v, 4), 'rest' => 0.0, 'derived' => true,
+        ];
+        $evalAt = fn (string $b): float => ExpressionEvaluator::evaluate(
+            $compiled,
+            fn (string $key): float => (float) ($rows[$key]['cells'][$b]['value'] ?? 0.0)
+        );
+
+        // 'recompute': Ausdruck auf JEDER Ebene neu rechnen (Quoten/Margen: Jahres-Marge = Jahr-DB ÷ Jahr-Umsatz).
+        if ($timeAgg === 'recompute') {
+            $cells = [];
+            foreach (array_keys($allBuckets) as $b) {
+                $cells[$b] = $mk($b, $evalAt($b));
+            }
+            ksort($cells);
+
+            return $cells;
+        }
+
+        // sonst: NUR auf der feinsten Ebene rechnen, dann direkt hochrollen (flow=Σ · avg=Ø · stock=Schluss).
+        // Direkt (nicht über Node), damit negative Werte nicht auf 0 geklemmt werden.
+        $rank = ['year' => 0, 'quarter' => 1, 'month' => 2, 'day' => 3, 'hour' => 4];
+        $finest = -1;
+        foreach (array_keys($allBuckets) as $b) {
+            $finest = max($finest, $rank[TimeLevel::fromKey($b)->value] ?? 2);
+        }
+        $finestLevel = array_search($finest, $rank, true);
+
+        $fine = [];
+        foreach (array_keys($allBuckets) as $b) {
+            if (TimeLevel::fromKey($b)->value === $finestLevel) {
+                $fine[$b] = $evalAt($b);
+            }
+        }
+        ksort($fine); // chronologisch
 
         $cells = [];
-        foreach (array_keys($buckets) as $b) {
-            $resolve = fn (string $key): float => (float) ($rows[$key]['cells'][$b]['value'] ?? 0.0);
-            $cells[$b] = [
-                'level' => TimeLevel::fromKey($b)->value,
-                'entered' => false, 'mode' => null,
-                'value' => round(ExpressionEvaluator::evaluate($compiled, $resolve), 4),
-                'rest' => 0.0, 'derived' => true,
-            ];
+        $byAnc = [];
+        foreach ($fine as $b => $v) {
+            $cells[$b] = $mk($b, $v);
+            $p = TimeAxis::parentKey($b);
+            while ($p !== null) {
+                $byAnc[$p][] = $v; // aufsteigend ⇒ end()=Schluss, reset()=Eröffnung
+                $p = TimeAxis::parentKey($p);
+            }
+        }
+        foreach ($byAnc as $anc => $vals) {
+            $agg = match ($timeAgg) {
+                'stock' => (float) end($vals),
+                'stock_open' => (float) reset($vals),
+                'avg' => array_sum($vals) / count($vals),
+                default => array_sum($vals), // flow = Σ
+            };
+            $cells[$anc] = $mk($anc, $agg);
         }
         ksort($cells);
 

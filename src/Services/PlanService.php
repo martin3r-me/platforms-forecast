@@ -219,7 +219,7 @@ final class PlanService
         if (! empty($r['quote_basis'])) {
             $config = array_merge((array) $config, ['quote_basis' => (string) $r['quote_basis']]);
         }
-        if (! empty($r['time_agg']) && in_array($r['time_agg'], ['flow', 'stock', 'stock_open', 'avg'], true)) {
+        if (! empty($r['time_agg']) && in_array($r['time_agg'], ['flow', 'stock', 'stock_open', 'avg', 'recompute'], true)) {
             $config = array_merge((array) $config, ['time_agg' => (string) $r['time_agg']]);
         }
 

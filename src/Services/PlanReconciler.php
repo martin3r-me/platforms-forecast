@@ -37,6 +37,10 @@ final class PlanReconciler
 
         $byRow = $this->entriesByRow($plan);
         $resolved = $plan->resolvedRows();
+        $rowByKey = [];
+        foreach ($resolved as $r) {
+            $rowByKey[$r->key] = $r;
+        }
 
         // Zeilen-Metainfo + Quell-Referenzen sammeln
         $rowInfo = [];
@@ -205,11 +209,11 @@ final class PlanReconciler
         }
         unset($info);
 
-        // Formel-/Verweis-Zeilen berechnen (Quellen: selbe Planung ODER anderer Plan)
-        foreach ($resolved as $row) {
-            if (! $rowInfo[$row->key]['isFormula']) {
-                continue;
-            }
+        // Formel-/Verweis-Zeilen berechnen — in TOPOLOGISCHER Reihenfolge (Quellen vor Verbrauchern),
+        // damit Formeln/Ausdrücke beliebige Zeilen referenzieren dürfen; Zyklen werden erkannt & gemeldet.
+        $formulaOrder = $this->orderFormulas($rowInfo, array_fill_keys(array_keys($rowInfo), true));
+        foreach ($formulaOrder as $rk) {
+            $row = $rowByKey[$rk];
             // Am Ordner: nicht neu-rechenbare Formeln sind schon per Kind-Summe konsolidiert.
             if ($hasChildren && ($nonRecomputable[$row->key] ?? false)) {
                 continue;
@@ -311,11 +315,8 @@ final class PlanReconciler
                 $totals[$row->key] = $sumYearCells($row->key);
             }
         }
-        foreach ($resolved as $row) {
-            $k = $row->key;
-            if (! $rowInfo[$k]['isFormula']) {
-                continue;
-            }
+        foreach ($formulaOrder as $k) {
+            $row = $rowByKey[$k];
             if (! empty($rowInfo[$k]['expr'])) {
                 // Ausdruck: Jahres-Total = Ausdruck auf Jahres-Ebene (bereits als Jahr-Zelle berechnet).
                 $cc = $rows[$k]['cells'] ?? [];
@@ -423,6 +424,63 @@ final class PlanReconciler
      * @param  list<string>  $warnings  per Referenz — Parse-Fehler wird hier vermerkt
      * @return array<string, array>
      */
+    /**
+     * Formel-Zeilen topologisch ordnen: Quellen vor Verbrauchern (agg-Quellen UND Ausdruck-Refs).
+     * Zyklen werden erkannt und als Warnung an der zyklus-schließenden Zeile vermerkt; die Reihenfolge
+     * bleibt best-effort (der Zyklus wird aufgebrochen). Nur selbe-Plan-Referenzen zählen für die Ordnung.
+     *
+     * @param  array<string,array>  $rowInfo  warnings werden ggf. ergänzt (per Referenz)
+     * @param  array<string,bool>   $allKeys  alle existierenden Zeilen-Keys
+     * @return list<string>  geordnete Formel-Keys
+     */
+    private function orderFormulas(array &$rowInfo, array $allKeys): array
+    {
+        $isFormula = [];
+        $deps = [];
+        foreach ($rowInfo as $k => $info) {
+            if (! ($info['isFormula'] ?? false)) {
+                continue;
+            }
+            $isFormula[$k] = true;
+            $d = $info['sources'] ?? [];
+            if (! empty($info['expr'])) {
+                try {
+                    $d = array_merge($d, ExpressionEvaluator::compile((string) $info['expr'])['refs']);
+                } catch (\Throwable $e) {
+                    // ungültiger Ausdruck: expressionCells meldet den Fehler separat
+                }
+            }
+            $deps[$k] = array_values(array_unique(array_filter($d, fn ($x) => isset($allKeys[$x]))));
+        }
+
+        $ordered = [];
+        $state = []; // unset/0 = neu, 1 = im Pfad (aktiv), 2 = fertig
+        $visit = function (string $k) use (&$visit, &$deps, &$isFormula, &$ordered, &$state, &$rowInfo): void {
+            $s = $state[$k] ?? 0;
+            if ($s === 2) {
+                return;
+            }
+            if ($s === 1) {
+                $rowInfo[$k]['warnings'][] = 'Zirkelbezug erkannt — Formel hängt (indirekt) von sich selbst ab; Ergebnis unzuverlässig.';
+
+                return;
+            }
+            $state[$k] = 1;
+            foreach ($deps[$k] ?? [] as $dep) {
+                if (isset($isFormula[$dep])) {
+                    $visit($dep);
+                }
+            }
+            $state[$k] = 2;
+            $ordered[] = $k;
+        };
+        foreach (array_keys($isFormula) as $k) {
+            $visit($k);
+        }
+
+        return $ordered;
+    }
+
     private function expressionCells(string $expr, array $rows, array &$warnings, string $timeAgg): array
     {
         try {

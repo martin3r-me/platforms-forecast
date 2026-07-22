@@ -56,6 +56,7 @@ final class Aggregation
             'max' => 'Max',
             'count' => 'Anzahl',
             'product' => '∏ Produkt',
+            'cumulative' => 'Σ→ Fortschreibung',
             default => 'Σ Summe',
         };
     }

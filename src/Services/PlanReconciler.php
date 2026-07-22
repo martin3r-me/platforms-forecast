@@ -68,7 +68,7 @@ final class PlanReconciler
                 'nonAdditive' => $row->unit?->dimension === 'ratio',
                 'section' => $row->config['section'] ?? null,
                 'quoteBasis' => $row->config['quote_basis'] ?? null,
-                'timeAgg' => $row->config['time_agg'] ?? 'flow',
+                'timeAgg' => $row->config['time_agg'] ?? (($isFormula && $agg === 'cumulative') ? 'stock' : 'flow'),
                 'agg' => $agg,
                 'sources' => $samePlanKeys,
                 'refPlans' => $refPlans,
@@ -235,6 +235,14 @@ final class PlanReconciler
             }
 
             $agg = $rowInfo[$row->key]['agg'];
+
+            // Fortschreibung/Roll-Forward: laufende Summe über die Zeit — Schluss[t] = Schluss[t-1] + Netto-Fluss[t].
+            // Der Anfangsbestand ist einfach eine +Quelle, die am ersten Teilzeitraum erfasst wird.
+            if ($agg === 'cumulative') {
+                $rows[$row->key]['cells'] = $this->cumulativeCells($sources);
+                continue;
+            }
+
             $cells = [];
             foreach (array_keys($buckets) as $b) {
                 $vals = array_map(fn ($s) => ($s['cells'][$b]['value'] ?? 0.0) * $s['weight'], $sources);
@@ -299,6 +307,14 @@ final class PlanReconciler
             if (! $rowInfo[$k]['isFormula']) {
                 continue;
             }
+            if ($rowInfo[$k]['agg'] === 'cumulative') {
+                // Fortschreibung: Jahres-Total = jüngster Schluss (nicht Aggregation der Quell-Totals).
+                $cc = $rows[$k]['cells'] ?? [];
+                $years = array_filter($cc, fn ($c) => ($c['level'] ?? '') === 'year');
+                $pick = $years ?: $cc;
+                $totals[$k] = $pick ? round(end($pick)['value'], 4) : 0.0;
+                continue;
+            }
             if ($hasChildren && ($nonRecomputable[$k] ?? false)) {
                 $totals[$k] = $sumYearCells($k);
                 continue;
@@ -321,6 +337,65 @@ final class PlanReconciler
         }
 
         return ['plan' => $this->planMeta($plan), 'rows' => $rows, 'rowInfo' => $rowInfo, 'totals' => $totals];
+    }
+
+    /**
+     * Fortschreibung (Roll-Forward): laufende Summe der signierten Quell-Flüsse über die Zeit.
+     * Rechnet auf der FEINSTEN vorhandenen Ebene (Netto je Periode → kumulieren) und projiziert
+     * den Schluss nach oben (jeder Elternknoten = Schluss seiner jüngsten feinen Periode = Stock).
+     *
+     * @param  list<array{cells: array, dir: string, weight: float}>  $sources
+     * @return array<string, array>
+     */
+    private function cumulativeCells(array $sources): array
+    {
+        $rank = ['year' => 0, 'quarter' => 1, 'month' => 2, 'day' => 3, 'hour' => 4];
+
+        // 1) feinste vorhandene Ebene bestimmen
+        $finest = -1;
+        foreach ($sources as $s) {
+            foreach (array_keys($s['cells']) as $b) {
+                $r = $rank[TimeLevel::fromKey($b)->value] ?? 2;
+                $finest = max($finest, $r);
+            }
+        }
+        if ($finest < 0) {
+            return [];
+        }
+        $finestLevel = array_search($finest, $rank, true);
+
+        // 2) Netto-Fluss je feiner Periode (Zufluss +, Abfluss −, neutral 0)
+        $delta = [];
+        foreach ($sources as $s) {
+            $sign = $s['dir'] === 'expense' ? -1.0 : ($s['dir'] === 'neutral' ? 0.0 : 1.0);
+            foreach ($s['cells'] as $b => $c) {
+                if (TimeLevel::fromKey($b)->value !== $finestLevel) {
+                    continue;
+                }
+                $delta[$b] = ($delta[$b] ?? 0.0) + $sign * $s['weight'] * ($c['value'] ?? 0.0);
+            }
+        }
+        ksort($delta); // chronologisch
+
+        // 3) kumulieren + Schluss nach oben projizieren (aufsteigend ⇒ jüngster gewinnt am Elternknoten)
+        $cells = [];
+        $running = 0.0;
+        foreach ($delta as $b => $d) {
+            $running += $d;
+            $val = round($running, 4);
+            $k = $b;
+            do {
+                $cells[$k] = [
+                    'level' => TimeLevel::fromKey($k)->value,
+                    'entered' => false, 'mode' => null,
+                    'value' => $val, 'rest' => 0.0, 'derived' => true,
+                ];
+                $k = TimeAxis::parentKey($k);
+            } while ($k !== null);
+        }
+        ksort($cells);
+
+        return $cells;
     }
 
     private function planMeta(ForecastPlan $plan): array

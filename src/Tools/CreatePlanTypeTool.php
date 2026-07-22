@@ -25,8 +25,11 @@ class CreatePlanTypeTool implements ToolContract, ToolMetadataContract
             .'Jede Zeile: {key, label, kind[input|formula], unit (Code z.B. EUR/H/FTE/PCS/PCT), '
             .'direction[income|expense|neutral], config, order}. '
             .'Formula-Zeilen (read-only, aggregieren andere Zeilen) brauchen config: '
-            .'{agg: sum|net|avg|median|min|max|count|product, sources: [rowKey, ...]}. '
-            .'"net" = vorzeichenbehaftete Summe (income − expense).';
+            .'{agg: sum|net|avg|median|min|max|count|product|cumulative, sources: [rowKey, ...]}. '
+            .'"net" = vorzeichenbehaftete Summe (income − expense). '
+            .'"cumulative" = Fortschreibung/Roll-Forward: laufende Summe der signierten Quellen über die Zeit '
+            .'(Schluss[t]=Schluss[t-1]+Netto[t]) — für Bestände wie Liquidität/Cash; Anfangsbestand = +Quelle am Start. '
+            .'Rollt automatisch als Bestand (Schlusswert) auf.';
     }
 
     public function getSchema(): array

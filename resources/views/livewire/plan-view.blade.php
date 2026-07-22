@@ -275,7 +275,20 @@
                         <div class="px-4 pb-2.5 flex items-center gap-2 text-[11px]">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium">@svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten aktiv</span>
                             <span class="text-[var(--ui-muted)]">Nur getönte „offene" Felder sind tippbar · Enter/Tab speichert.</span>
-                            @if($cellError)
+
+                            @if($lastEdit)
+                                {{-- Settle-Fenster: 30 s rückgängig, dann festgeschrieben. --}}
+                                <div wire:key="settle-{{ $editNonce }}" x-data="{ left: 30 }"
+                                    x-init="let t = setInterval(() => { if (--left <= 0) { clearInterval(t); $wire.clearLastEditIf({{ $editNonce }}) } }, 1000)"
+                                    class="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 font-medium ml-auto">
+                                    @svg('heroicon-o-check-circle','w-3.5 h-3.5')
+                                    <span>„{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
+                                    <button type="button" wire:click="undoCell('{{ $lastEdit['row'] }}', '{{ $lastEdit['bucket'] }}')"
+                                        class="inline-flex items-center gap-0.5 underline decoration-dotted hover:text-emerald-900">
+                                        @svg('heroicon-o-arrow-uturn-left','w-3 h-3') rückgängig
+                                    </button>
+                                </div>
+                            @elseif($cellError)
                                 <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 font-medium ml-auto">@svg('heroicon-o-exclamation-triangle','w-3 h-3') {{ $cellError }}</span>
                             @endif
                         </div>

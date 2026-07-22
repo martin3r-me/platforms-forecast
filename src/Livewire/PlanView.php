@@ -46,6 +46,12 @@ class PlanView extends Component
     /** Letzte Ablehnung/Fehlermeldung des Editier-Tors (für den Nutzer). */
     public ?string $cellError = null;
 
+    /** Zuletzt gespeicherte Zelle für den Settle-Timer (rückgängig im 30-s-Fenster). */
+    public ?array $lastEdit = null;
+
+    /** Zählt jede Speicherung hoch → erzwingt Neustart des Client-Countdowns. */
+    public int $editNonce = 0;
+
     public function mount(string $uuid): void
     {
         $this->uuid = $uuid;
@@ -73,6 +79,31 @@ class PlanView extends Component
     {
         $this->editMode = ! $this->editMode;
         $this->cellError = null;
+        $this->lastEdit = null;
+    }
+
+    /** Settle: die zuletzt gespeicherte Zelle rückgängig machen (nur im Fenster). */
+    public function undoCell(string $rowKey, string $bucket): void
+    {
+        $this->cellError = null;
+        try {
+            (new PlanService())->undoRecent($this->plan(), $rowKey, $bucket, Auth::id());
+            $this->lastEdit = null;
+        } catch (\DomainException $e) {
+            $this->cellError = $e->getMessage();
+            $this->lastEdit = null;
+        } catch (\Throwable $e) {
+            $this->cellError = 'Rückgängig fehlgeschlagen.';
+        }
+    }
+
+    /** Settle-Fenster abgelaufen (client-getaktet) → Hinweis ausblenden — aber nur, wenn noch der
+     *  aktuelle Edit (sonst würde ein alter Timer den Hinweis eines neueren Edits wegräumen). */
+    public function clearLastEditIf(int $nonce): void
+    {
+        if ($nonce === $this->editNonce) {
+            $this->lastEdit = null;
+        }
     }
 
     /**
@@ -82,17 +113,20 @@ class PlanView extends Component
     public function saveCell(string $rowKey, string $bucket, string $value): void
     {
         $this->cellError = null;
+        $this->editNonce++;
         $plan = $this->plan();
         $service = new PlanService();
 
         try {
             $raw = trim($value);
 
-            // Faktor? (Einheit FAKTOR wird als % angezeigt → beim Speichern /100)
+            // Faktor? (Einheit FAKTOR wird als % angezeigt → beim Speichern /100) + Label merken.
             $isFactor = false;
+            $rowLabel = $rowKey;
             foreach ($plan->resolvedRows() as $r) {
                 if ($r->key === $rowKey) {
                     $isFactor = ($r->unit?->code === 'FAKTOR');
+                    $rowLabel = $r->label;
                     break;
                 }
             }
@@ -104,6 +138,7 @@ class PlanView extends Component
                     throw new \DomainException($gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.');
                 }
                 $service->clearCell($plan, $rowKey, $bucket, Auth::id());
+                $this->lastEdit = ['row' => $rowKey, 'bucket' => $bucket, 'label' => $rowLabel];
 
                 return;
             }
@@ -119,6 +154,7 @@ class PlanView extends Component
             }
 
             $service->setCell($plan, $rowKey, $bucket, $num, Mode::Detail, Auth::id(), enforceGate: true);
+            $this->lastEdit = ['row' => $rowKey, 'bucket' => $bucket, 'label' => $rowLabel];
         } catch (\DomainException $e) {
             $this->cellError = $e->getMessage();
         } catch (\Throwable $e) {

@@ -117,6 +117,44 @@ final class PlanService
         });
     }
 
+    /**
+     * Settle: die jüngste Änderung einer Zelle rückgängig machen — aber NUR innerhalb des
+     * Fensters (Vertipper vor dem Festschreiben). Setzt den Snapshot auf den Vorzustand zurück
+     * und entfernt das Event aus dem Ledger (im Fenster gilt: keine Historie). Danach: gesperrt.
+     */
+    public function undoRecent(ForecastPlan $plan, string $rowKey, string $bucketKey, ?int $userId = null, int $windowSeconds = 35): bool
+    {
+        return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $windowSeconds) {
+            $change = ForecastChange::where('plan_id', $plan->id)
+                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)
+                ->whereIn('op', ['set', 'clear'])
+                ->orderByDesc('version')->orderByDesc('id')->first();
+
+            if (! $change) {
+                throw new \DomainException('Nichts zum Rückgängigmachen.');
+            }
+            if (! $change->created_at || $change->created_at->lt(now()->subSeconds($windowSeconds))) {
+                throw new \DomainException('Bereits festgeschrieben — Rückgängig nicht mehr möglich.');
+            }
+
+            // Snapshot auf den Zustand VOR der Änderung.
+            if ($change->old_value === null) {
+                ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->delete();
+            } else {
+                $level = TimeLevel::fromKey($bucketKey);
+                ForecastEntry::updateOrCreate(
+                    ['plan_id' => $plan->id, 'row_key' => $rowKey, 'bucket_key' => $bucketKey],
+                    ['team_id' => $plan->team_id, 'level' => $level->value, 'value' => (float) $change->old_value, 'mode' => $change->old_mode ?? Mode::Detail->value],
+                );
+            }
+
+            // Event aus dem Ledger entfernen (Vertipper im Fenster → nie passiert).
+            $change->delete();
+
+            return true;
+        });
+    }
+
     /** Leert eine Zelle → neue Version. */
     public function clearCell(ForecastPlan $plan, string $rowKey, string $bucketKey, ?int $userId = null): bool
     {

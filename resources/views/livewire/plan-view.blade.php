@@ -274,7 +274,7 @@
                     @if($editMode)
                         <div class="px-4 pb-2.5 flex items-center gap-2 text-[11px]">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium">@svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten aktiv</span>
-                            <span class="text-[var(--ui-muted)]">Nur getönte „offene" Felder sind tippbar · Enter/Tab speichert.</span>
+                            <span class="text-[var(--ui-muted)]">Offene Felder tippbar · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet · Enter speichert.</span>
 
                             @if($lastEdit)
                                 {{-- Settle-Fenster: 30 s rückgängig, dann festgeschrieben. --}}

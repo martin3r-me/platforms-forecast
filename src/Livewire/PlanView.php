@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Platform\Forecast\Enums\TimeLevel;
 use Platform\Forecast\Models\ForecastDistributionPolicy;
+use Platform\Forecast\Models\ForecastEntry;
 use Platform\Forecast\Models\ForecastLockPolicy;
 use Platform\Forecast\Models\ForecastPlan;
 use Platform\Forecast\Models\ForecastRowSource;
@@ -143,23 +144,76 @@ class PlanView extends Component
                 return;
             }
 
-            $num = $this->parseNumber($raw);
-            if ($num === null) {
-                $this->cellError = 'Bitte eine Zahl eingeben.';
+            // Aktuellen (eingegebenen) Wert holen — Basis für relative Operatoren (+, -, *, /, %).
+            $entry = ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucket)->first();
+            $currentStored = $entry ? (float) $entry->value : 0.0;
+            $currentDisplayed = $isFactor ? $currentStored * 100 : $currentStored; // Faktor rechnet in %-Anzeige
+
+            $resolved = $this->resolveInput($raw, $currentDisplayed);
+            if ($resolved === null) {
+                $this->cellError = 'Zahl oder Rechnung eingeben — z. B. 100 · +50 · +5% · *1,1 · /2 · -500';
 
                 return;
             }
-            if ($isFactor) {
-                $num /= 100;
-            }
+            $store = round($isFactor ? $resolved / 100 : $resolved, 6);
 
-            $service->setCell($plan, $rowKey, $bucket, $num, Mode::Detail, Auth::id(), enforceGate: true);
+            $service->setCell($plan, $rowKey, $bucket, $store, Mode::Detail, Auth::id(), enforceGate: true);
             $this->lastEdit = ['row' => $rowKey, 'bucket' => $bucket, 'label' => $rowLabel];
         } catch (\DomainException $e) {
             $this->cellError = $e->getMessage();
         } catch (\Throwable $e) {
             $this->cellError = 'Konnte nicht speichern.';
         }
+    }
+
+    /**
+     * Eingabe zu einem absoluten Wert auflösen — inkl. Inline-Operatoren relativ zum aktuellen Wert:
+     *   100 → setzen · +50 → +50 · -500 → −500 · *1,1 → ×1,1 · /2 → ÷2 · +5% → +5 % · -5% → −5 %.
+     * Ohne führenden Operator = setzen (auch "19%" → 19 in der Anzeige-Ebene).
+     */
+    protected function resolveInput(string $raw, float $current): ?float
+    {
+        $s = trim(str_replace(["\u{00a0}", '€', ' '], '', $raw));
+        if ($s === '') {
+            return null;
+        }
+
+        $op = null;
+        if (in_array($s[0], ['+', '-', '*', '/'], true)) {
+            $op = $s[0];
+            $s = substr($s, 1);
+        }
+
+        $pct = str_ends_with($s, '%');
+        if ($pct) {
+            $s = rtrim(substr($s, 0, -1));
+        }
+
+        $n = $this->parseNumber($s);
+        if ($n === null) {
+            return null;
+        }
+
+        if ($op === null) {
+            return $n; // setzen
+        }
+        if ($pct) {
+            return match ($op) {
+                '+' => $current * (1 + $n / 100),
+                '-' => $current * (1 - $n / 100),
+                '*' => $current * ($n / 100),
+                '/' => $n != 0.0 ? $current / ($n / 100) : $current,
+                default => null,
+            };
+        }
+
+        return match ($op) {
+            '+' => $current + $n,
+            '-' => $current - $n,
+            '*' => $current * $n,
+            '/' => $n != 0.0 ? $current / $n : $current,
+            default => null,
+        };
     }
 
     /** Zahl aus Eingabe lesen — akzeptiert deutsch (1.234,56) und einfach (1234.56 / 1234). */

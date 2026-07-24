@@ -225,12 +225,14 @@
                                     <span class="text-xs font-medium px-2 py-1 rounded-md text-[var(--ui-muted)]/35 cursor-default"
                                         title="Tiefer als die aktuelle Ansicht — Spalte anklicken zum Reinzoomen">{{ $ln['label'] }}</span>
                                 @else
-                                    <button type="button" wire:click="zoom('{{ $ln['bucket'] }}')"
+                                    <button type="button"
+                                        wire:click="{{ ($ln['jump'] ?? false) ? "viewLevelJump('".$ln['bucket']."', '".$ln['level']."')" : "zoom('".$ln['bucket']."')" }}"
                                         class="text-xs font-semibold px-2 py-1 rounded-md transition-colors
                                             {{ $ln['state'] === 'current'
                                                 ? 'bg-[var(--ui-primary)] text-[var(--ui-on-primary)]'
                                                 : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)] hover:text-[var(--ui-secondary)]' }}"
-                                        @if($ln['state'] === 'done') title="Zur Ebene {{ $ln['label'] }} rauszoomen" @endif>
+                                        @if(($ln['jump'] ?? false)) title="Halbjahre (H1/H2) anzeigen — ohne Pflicht-Zwischenschritt"
+                                        @elseif($ln['state'] === 'done') title="Zur Ebene {{ $ln['label'] }} rauszoomen" @endif>
                                         {{ $ln['label'] }}
                                     </button>
                                 @endif

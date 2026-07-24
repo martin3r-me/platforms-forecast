@@ -32,6 +32,10 @@ class PlanView extends Component
     /** Aktuell aufgeklappter Container-Bucket ('' = Wurzel/Jahre). */
     public string $container = '';
 
+    /** Sicht-Ebenen-Override für den Halbjahr-Sprung-Reiter ('half' zeigt H1/H2 des Jahres);
+     *  null = normaler Drill (childLevel). Wird bei jedem Spalten-Zoom zurückgesetzt. */
+    public ?string $viewLevel = null;
+
     /** Herkunfts-Plan-uuid (für den "Zurück"-Link nach einem Drill-Klick). */
     public ?string $from = null;
 
@@ -64,6 +68,14 @@ class PlanView extends Component
     public function zoom(string $bucket): void
     {
         $this->container = $bucket;
+        $this->viewLevel = null; // Spalten-Zoom = normaler Drill (kein Halbjahr-Zwang)
+    }
+
+    /** Sprung-Reiter: eine Ebene direkt anzeigen (aktuell nur Halbjahr) — ohne Drill-Zwang. */
+    public function viewLevelJump(string $bucket, string $level): void
+    {
+        $this->container = $bucket;
+        $this->viewLevel = $level;
     }
 
     public function toggleShare(): void
@@ -261,7 +273,7 @@ class PlanView extends Component
         $leafCount = 0;
 
         $columns = $this->columns($plan);
-        $level = $this->childLevel($this->container);
+        $level = $this->viewLevel ?? $this->childLevel($this->container);
         $breadcrumb = $this->breadcrumb();
         $levelNav = $this->levelNav($breadcrumb, $level);
 
@@ -825,6 +837,7 @@ class PlanView extends Component
     {
         return match ($level) {
             'year' => 'Jahr',
+            'half' => 'Halbjahr',
             'quarter' => 'Quartal',
             'month' => 'Monat',
             'day' => 'Tag',
@@ -841,6 +854,7 @@ class PlanView extends Component
         }
 
         $plural = match ($level) {
+            'half' => 'Halbjahre',
             'quarter' => 'Quartale',
             'month' => 'Monate',
             'day' => 'Tage',
@@ -855,7 +869,13 @@ class PlanView extends Component
     /** @return list<array{bucket:string,label:string}> */
     protected function columns(ForecastPlan $plan): array
     {
-        $buckets = $this->childBuckets($this->container, $plan);
+        if ($this->viewLevel === 'half') {
+            // Sprung-Reiter: H1/H2 des Jahres im Container (kein Drill-Tier).
+            $y = substr($this->container !== '' ? $this->container : (string) now()->year, 0, 4);
+            $buckets = ["{$y}-H1", "{$y}-H2"];
+        } else {
+            $buckets = $this->childBuckets($this->container, $plan);
+        }
 
         return array_map(fn (string $b) => [
             'bucket' => $b,
@@ -868,8 +888,10 @@ class PlanView extends Component
         if ($container === '') {
             return 'year';
         }
+        // Halbjahr ist KEIN Pflicht-Drill-Tier: Jahr → Quartal (alle 4). Halbjahr nur per Sprung-Reiter.
         return match (TimeLevel::fromKey($container)) {
             TimeLevel::Year => 'quarter',
+            TimeLevel::HalfYear => 'quarter', // in ein Halbjahr reingeklickt → seine 2 Quartale
             TimeLevel::Quarter => 'month',
             TimeLevel::Month => 'day',
             TimeLevel::Day => 'hour',
@@ -887,7 +909,12 @@ class PlanView extends Component
         $level = TimeLevel::fromKey($container);
 
         if ($level === TimeLevel::Year) {
-            return array_map(fn ($q) => "{$container}-Q{$q}", range(1, 4));
+            return array_map(fn ($q) => "{$container}-Q{$q}", range(1, 4)); // alle 4 Quartale (Halbjahr übersprungen)
+        }
+        if ($level === TimeLevel::HalfYear) {
+            [$y, $h] = explode('-H', $container);
+            $start = ((int) $h - 1) * 2 + 1;
+            return ["{$y}-Q{$start}", "{$y}-Q".($start + 1)];
         }
         if ($level === TimeLevel::Quarter) {
             [$y, $q] = explode('-Q', $container);
@@ -938,16 +965,33 @@ class PlanView extends Component
     protected function levelNav(array $breadcrumb, string $currentLevel): array
     {
         $levelBucket = [];
+        $yearBucket = null;
         foreach ($breadcrumb as $crumb) {
             $levelBucket[$this->childLevel($crumb['bucket'])] = $crumb['bucket'];
+            if ($crumb['bucket'] !== '' && TimeLevel::fromKey($crumb['bucket']) === TimeLevel::Year) {
+                $yearBucket = $crumb['bucket'];
+            }
         }
 
         $nav = [];
-        foreach (['year', 'quarter', 'month', 'day', 'hour'] as $lvl) {
+        foreach (['year', 'half', 'quarter', 'month', 'day', 'hour'] as $lvl) {
+            if ($lvl === 'half') {
+                // Sprung-Reiter (kein Drill-Tier): zeigt H1/H2 des aktuellen Jahres.
+                $nav[] = [
+                    'level' => 'half',
+                    'label' => 'Halbjahr',
+                    'bucket' => $yearBucket,
+                    'jump' => true,
+                    'state' => $currentLevel === 'half' ? 'current' : ($yearBucket !== null ? 'done' : 'ahead'),
+                ];
+
+                continue;
+            }
             $nav[] = [
                 'level' => $lvl,
                 'label' => $this->levelLabelDe($lvl),
                 'bucket' => $levelBucket[$lvl] ?? null,   // null = nur per Spalten-Klick erreichbar (tiefer als jetzt)
+                'jump' => false,
                 'state' => $lvl === $currentLevel ? 'current'
                     : (isset($levelBucket[$lvl]) ? 'done' : 'ahead'),
             ];
@@ -971,6 +1015,10 @@ class PlanView extends Component
             $k = TimeAxis::parentKey($k);
         }
         foreach (array_reverse($chain) as $b) {
+            // Halbjahr ist kein Pflicht-Tier: im Pfad überspringen (außer man ist genau dort).
+            if (TimeLevel::fromKey($b) === TimeLevel::HalfYear && $b !== $this->container) {
+                continue;
+            }
             $crumbs[] = ['bucket' => $b, 'label' => $this->label($b)];
         }
 
@@ -981,6 +1029,7 @@ class PlanView extends Component
     {
         return match (TimeLevel::fromKey($bucket)) {
             TimeLevel::Year => $bucket,
+            TimeLevel::HalfYear => str_replace('-', ' ', $bucket),
             TimeLevel::Quarter => str_replace('-', ' ', $bucket), // "2026-Q3" → "2026 Q3"
             TimeLevel::Month => Carbon::createFromFormat('Y-m', $bucket)->translatedFormat('M Y'),
             TimeLevel::Day => Carbon::createFromFormat('Y-m-d', $bucket)->translatedFormat('D d.'),

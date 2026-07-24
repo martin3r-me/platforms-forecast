@@ -62,6 +62,11 @@ class ForecastDistributionPolicy extends Model
 
         return match ($level) {
             TimeLevel::Year => array_sum($mw),
+            TimeLevel::HalfYear => (function () use ($bucket, $mw) {
+                [, $h] = explode('-H', $bucket);
+                $start = ((int) $h - 1) * 6; // 0-basiert
+                return array_sum(array_slice($mw, $start, 6));
+            })(),
             TimeLevel::Quarter => (function () use ($bucket, $mw) {
                 [, $q] = explode('-Q', $bucket);
                 $start = ((int) $q - 1) * 3; // 0-basiert

@@ -69,9 +69,14 @@ final class TimeAxis
         if (str_contains($key, 'T')) {
             return substr($key, 0, (int) strpos($key, 'T'));
         }
-        // Quartal "Y-Qn" → Jahr "Y"
-        if (str_contains($key, 'Q')) {
+        // Halbjahr "Y-Hm" → Jahr "Y"
+        if (str_contains($key, 'H')) {
             return explode('-', $key)[0];
+        }
+        // Quartal "Y-Qn" → Halbjahr "Y-Hm" (Q1/Q2 → H1, Q3/Q4 → H2)
+        if (str_contains($key, 'Q')) {
+            [$y, $q] = explode('-Q', $key);
+            return $y.'-H'.(int) ceil(((int) $q) / 2);
         }
         $parts = explode('-', $key);
         return match (count($parts)) {

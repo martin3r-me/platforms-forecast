@@ -43,7 +43,7 @@ final class LockService
 
     public static function levelRank(string $level): int
     {
-        return ['year' => 0, 'quarter' => 1, 'month' => 2, 'day' => 3, 'hour' => 4][$level] ?? 2;
+        return ['year' => 0, 'half' => 1, 'quarter' => 2, 'month' => 3, 'day' => 4, 'hour' => 5][$level] ?? 3;
     }
 
     /** Nächst-höherer Bucket auf der Perioden-Ebene (Kaskade nach unten). */
@@ -62,6 +62,11 @@ final class LockService
     {
         return match (TimeLevel::fromKey($bucket)) {
             TimeLevel::Year => [Carbon::create((int) $bucket, 1, 1)->startOfYear(), Carbon::create((int) $bucket, 1, 1)->endOfYear()],
+            TimeLevel::HalfYear => (function () use ($bucket) {
+                [$y, $h] = explode('-H', $bucket);
+                $s = Carbon::create((int) $y, ((int) $h - 1) * 6 + 1, 1)->startOfMonth();
+                return [$s, $s->copy()->addMonths(5)->endOfMonth()];
+            })(),
             TimeLevel::Quarter => (function () use ($bucket) {
                 [$y, $q] = explode('-Q', $bucket);
                 $s = Carbon::create((int) $y, ((int) $q - 1) * 3 + 1, 1)->startOfMonth();

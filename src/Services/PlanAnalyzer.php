@@ -139,8 +139,10 @@ final class PlanAnalyzer
             return 'year';
         }
 
+        // Halbjahr ist KEIN Pflicht-Drill-Tier: Jahr → Quartal (alle 4). Halbjahr nur explizit (level=half).
         return match (TimeLevel::fromKey($container)) {
             TimeLevel::Year => 'quarter',
+            TimeLevel::HalfYear => 'quarter',
             TimeLevel::Quarter => 'month',
             TimeLevel::Month => 'day',
             TimeLevel::Day => 'hour',
@@ -159,6 +161,12 @@ final class PlanAnalyzer
 
         if ($level === TimeLevel::Year) {
             return array_map(fn ($q) => "{$container}-Q{$q}", range(1, 4));
+        }
+        if ($level === TimeLevel::HalfYear) {
+            [$y, $h] = explode('-H', $container);
+            $start = ((int) $h - 1) * 2 + 1;
+
+            return ["{$y}-Q{$start}", "{$y}-Q".($start + 1)];
         }
         if ($level === TimeLevel::Quarter) {
             [$y, $q] = explode('-Q', $container);
@@ -187,6 +195,7 @@ final class PlanAnalyzer
         foreach ($years as $y) {
             $out = array_merge($out, match ($level) {
                 'year' => [$y],
+                'half' => ["{$y}-H1", "{$y}-H2"],
                 'quarter' => array_map(fn ($q) => "{$y}-Q{$q}", range(1, 4)),
                 'month' => array_map(fn ($m) => sprintf('%s-%02d', $y, $m), range(1, 12)),
                 'day' => array_reduce(range(1, 12), function ($carry, $m) use ($y) {
@@ -226,6 +235,7 @@ final class PlanAnalyzer
     {
         return match (TimeLevel::fromKey($bucket)) {
             TimeLevel::Year => $bucket,
+            TimeLevel::HalfYear => str_replace('-', ' ', $bucket),
             TimeLevel::Quarter => str_replace('-', ' ', $bucket),
             TimeLevel::Month => Carbon::createFromFormat('Y-m', $bucket)->translatedFormat('M Y'),
             TimeLevel::Day => Carbon::createFromFormat('Y-m-d', $bucket)->translatedFormat('D d.'),

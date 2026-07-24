@@ -410,7 +410,7 @@ final class PlanReconciler
      */
     private function weightedRollup(array $valCells, array $weightCells): array
     {
-        $rank = ['year' => 0, 'quarter' => 1, 'month' => 2, 'day' => 3, 'hour' => 4];
+        $rank = ['year' => 0, 'half' => 1, 'quarter' => 2, 'month' => 3, 'day' => 4, 'hour' => 5];
         $finest = -1;
         foreach (array_keys($valCells) as $b) {
             $finest = max($finest, $rank[TimeLevel::fromKey($b)->value] ?? 2);
@@ -487,7 +487,7 @@ final class PlanReconciler
      */
     private function cumulativeCells(array $sources): array
     {
-        $rank = ['year' => 0, 'quarter' => 1, 'month' => 2, 'day' => 3, 'hour' => 4];
+        $rank = ['year' => 0, 'half' => 1, 'quarter' => 2, 'month' => 3, 'day' => 4, 'hour' => 5];
 
         // 1) feinste vorhandene Ebene bestimmen
         $finest = -1;
@@ -643,7 +643,7 @@ final class PlanReconciler
 
         // sonst: NUR auf der feinsten Ebene rechnen, dann direkt hochrollen (flow=Σ · avg=Ø · stock=Schluss).
         // Direkt (nicht über Node), damit negative Werte nicht auf 0 geklemmt werden.
-        $rank = ['year' => 0, 'quarter' => 1, 'month' => 2, 'day' => 3, 'hour' => 4];
+        $rank = ['year' => 0, 'half' => 1, 'quarter' => 2, 'month' => 3, 'day' => 4, 'hour' => 5];
         $finest = -1;
         foreach (array_keys($allBuckets) as $b) {
             $finest = max($finest, $rank[TimeLevel::fromKey($b)->value] ?? 2);

@@ -106,8 +106,8 @@ class PlanView extends Component
         try {
             $svc = new PlanService();
             $plan = $this->plan();
-            foreach ($this->lastEdit['buckets'] ?? [] as $b) {
-                $svc->undoRecent($plan, $this->lastEdit['row'], $b, Auth::id());
+            foreach ($this->lastEdit['cells'] ?? [] as $c) {
+                $svc->undoRecent($plan, (string) $c['row'], (string) $c['bucket'], Auth::id());
             }
             $this->lastEdit = null;
         } catch (\DomainException $e) {
@@ -140,7 +140,7 @@ class PlanView extends Component
 
         try {
             $this->applyCell($plan, new PlanService(), $rowKey, $bucket, trim($value), $meta['isFactor']);
-            $this->lastEdit = ['row' => $rowKey, 'buckets' => [$bucket], 'label' => $meta['label'], 'count' => 1];
+            $this->lastEdit = ['cells' => [['row' => $rowKey, 'bucket' => $bucket]], 'count' => 1, 'label' => $meta['label'], 'action' => 'saved'];
         } catch (\InvalidArgumentException|\DomainException $e) {
             $this->cellError = $e->getMessage();
         } catch (\Throwable $e) {
@@ -149,41 +149,53 @@ class PlanView extends Component
     }
 
     /**
-     * Fill: denselben Wert über mehrere Buckets einer Zeile schreiben — EIN Roundtrip, EIN Undo.
-     * Gesperrte Zellen im Bereich werden übersprungen; ungültige Eingabe bricht komplett ab.
+     * Bulk: mehrere Zellen (zeilen-/spalten-übergreifend) in EINEM Roundtrip schreiben und als
+     * EINE Undo-Aktion merken. $cells = list of {row, bucket, value?}. $value (falls gesetzt) gilt
+     * für ALLE (Fill/Leeren mit konstantem Wert), sonst nutzt jede Zelle ihren eigenen value
+     * (Muster-Fill/Paste). Gesperrte/ungültige Zellen werden übersprungen und gezählt.
      *
-     * @param  list<string>  $buckets
+     * @param  list<array{row?:string,bucket?:string,value?:string}>  $cells
      */
-    public function saveCells(string $rowKey, array $buckets, string $value): void
+    public function saveRange(array $cells, ?string $value = null, string $action = 'filled'): void
     {
         $this->cellError = null;
         $this->editNonce++;
         $plan = $this->plan();
-        $meta = $this->rowMeta($plan, $rowKey);
         $service = new PlanService();
-        $raw = trim($value);
+        $factor = [];   // rowKey => isFactor
+        $labels = [];   // rowKey => label
 
         $written = [];
         $skipped = 0;
-        foreach ($buckets as $bucket) {
+        foreach ($cells as $c) {
+            $rowKey = (string) ($c['row'] ?? '');
+            $bucket = (string) ($c['bucket'] ?? '');
+            if ($rowKey === '' || $bucket === '') {
+                continue;
+            }
+            if (! array_key_exists($rowKey, $factor)) {
+                $m = $this->rowMeta($plan, $rowKey);
+                $factor[$rowKey] = $m['isFactor'];
+                $labels[$rowKey] = $m['label'];
+            }
+            $raw = trim($value ?? (string) ($c['value'] ?? ''));
             try {
-                $this->applyCell($plan, $service, $rowKey, (string) $bucket, $raw, $meta['isFactor']);
-                $written[] = (string) $bucket;
-            } catch (\InvalidArgumentException $e) {
-                $this->cellError = $e->getMessage(); // Wert ungültig → gilt für alle, abbrechen
-                return;
+                $this->applyCell($plan, $service, $rowKey, $bucket, $raw, $factor[$rowKey]);
+                $written[] = ['row' => $rowKey, 'bucket' => $bucket];
             } catch (\Throwable $e) {
-                $skipped++; // gesperrte/fehlerhafte Zelle im Bereich → überspringen
+                $skipped++; // gesperrt/ungültig → überspringen
             }
         }
 
         if ($written === []) {
-            $this->cellError = $skipped > 0 ? 'Keine der Zellen ist eingebbar.' : 'Nichts zu füllen.';
+            $this->cellError = $skipped > 0 ? 'Keine der Zellen ist eingebbar.' : 'Nichts zu ändern.';
 
             return;
         }
 
-        $this->lastEdit = ['row' => $rowKey, 'buckets' => $written, 'label' => $meta['label'], 'count' => count($written), 'skipped' => $skipped];
+        $rows = array_values(array_unique(array_map(fn ($w) => $w['row'], $written)));
+        $label = count($rows) === 1 ? ($labels[$rows[0]] ?? '') : (count($rows).' Zeilen');
+        $this->lastEdit = ['cells' => $written, 'count' => count($written), 'label' => $label, 'action' => $action];
     }
 
     /** isFactor + Label einer Zeile (für Speichern/Anzeige). */

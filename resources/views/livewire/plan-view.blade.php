@@ -285,7 +285,8 @@
                                     x-init="let t = setInterval(() => { if (--left <= 0) { clearInterval(t); $wire.clearLastEditIf({{ $editNonce }}) } }, 1000)"
                                     class="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 font-medium ml-auto">
                                     @svg('heroicon-o-check-circle','w-3.5 h-3.5')
-                                    <span>@if(($lastEdit['count'] ?? 1) > 1){{ $lastEdit['count'] }} Zellen von „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 18) }}" gefüllt @else „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert @endif · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
+                                    @php $fcAct = $lastEdit['action'] ?? 'saved'; $fcCnt = $lastEdit['count'] ?? 1; @endphp
+                                    <span>@if($fcAct === 'saved') „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert @else {{ $fcCnt }} Zellen{{ $lastEdit['label'] ? ' · '.\Illuminate\Support\Str::limit($lastEdit['label'], 16) : '' }} {{ $fcAct === 'cleared' ? 'geleert' : 'gefüllt' }} @endif · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
                                     <button type="button" wire:click="undoLastEdit"
                                         class="inline-flex items-center gap-0.5 underline decoration-dotted hover:text-emerald-900">
                                         @svg('heroicon-o-arrow-uturn-left','w-3 h-3') rückgängig
@@ -647,6 +648,10 @@
             background: var(--ui-surface-solid); color: var(--ui-secondary);
             border: 2px solid var(--ui-primary); border-radius: 4px; padding: 2px 5px; z-index: 10; outline: none; }
         .fc-editor.fc-editor--spread { border-color: rgb(245 158 11); }
+        .fc-fill-handle { position: absolute; bottom: -4px; right: -4px; width: 9px; height: 9px; border-radius: 1px;
+            background: var(--ui-primary); border: 1.5px solid var(--ui-surface-solid); cursor: crosshair; z-index: 3; }
+        td.fc-fill-preview { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-primary) 55%, transparent);
+            background: color-mix(in srgb, var(--ui-primary) 7%, transparent) !important; }
     </style>
 
     {{-- Tastatur-Navigation der Eingabe-Felder: Enter/Tab → nächste offene Zelle (Shift = zurück).
@@ -659,7 +664,7 @@
 
         // ── Auswahl-Modell (Excel-artiges Grid) ────────────────────────────────────────────
         // Zellen sind Anzeige (data-fc-r/c/row/col + data-fc-edit). EIN geteilter Editor-Input
-        // wird bei Bedarf in die aktive Zelle gesetzt. Speichern läuft durch saveCell/saveCells.
+        // wird bei Bedarf in die aktive Zelle gesetzt. Speichern läuft durch saveCell/saveRange.
         // Listener/Objekt nur EINMAL anlegen (ueberlebt Script-Re-Runs via wire:navigate).
         if (! window.fcGrid) {
             const G = window.fcGrid = {
@@ -678,6 +683,7 @@
                     const r0 = Math.min(a.r, b.r), r1 = Math.max(a.r, b.r), c0 = Math.min(a.c, b.c), c1 = Math.max(a.c, b.c);
                     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const td = this.cell(r, c); if (td) td.classList.add('fc-sel'); }
                     const at = this.cell(b.r, b.c); if (at) at.classList.add('fc-active');
+                    this.placeHandle();
                 },
                 select(r, c, extend) {
                     this.commitEdit();
@@ -723,23 +729,91 @@
                     if (window.__fcWire) window.__fcWire.saveCell(row, col, val);
                 },
                 cancelEdit() { if (this.editing) { this.editing = false; this.stashEditor(); } },
-                clearSel() {
-                    if (! this.active) return;
+                rect() {
                     const a = this.anchor || this.active, b = this.active;
-                    const r0 = Math.min(a.r, b.r), r1 = Math.max(a.r, b.r), c0 = Math.min(a.c, b.c), c1 = Math.max(a.c, b.c);
-                    const byRow = {};
-                    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+                    return { r0: Math.min(a.r, b.r), r1: Math.max(a.r, b.r), c0: Math.min(a.c, b.c), c1: Math.max(a.c, b.c) };
+                },
+                // {row, bucket}-Liste der Auswahl (optional nur editierbare Zellen).
+                rangeCells(onlyEditable) {
+                    if (! this.active) return [];
+                    const q = this.rect(), out = [];
+                    for (let r = q.r0; r <= q.r1; r++) for (let c = q.c0; c <= q.c1; c++) {
                         const td = this.cell(r, c);
-                        if (td && td.dataset.fcEdit === '1') (byRow[td.dataset.fcRow] = byRow[td.dataset.fcRow] || []).push(td.dataset.fcCol);
+                        if (td && (! onlyEditable || td.dataset.fcEdit === '1')) out.push({ row: td.dataset.fcRow, bucket: td.dataset.fcCol });
                     }
-                    const rows = Object.keys(byRow);
-                    if (rows.length && window.__fcWire) rows.forEach(rk => window.__fcWire.saveCells(rk, byRow[rk], ''));
+                    return out;
+                },
+                clearSel() {
+                    const cells = this.rangeCells(true);
+                    if (cells.length && window.__fcWire) window.__fcWire.saveRange(cells, '', 'cleared');
+                },
+                // ── Fill-Handle: an der unteren-rechten Ecke der Auswahl; ziehen füllt/kopiert ──
+                ensureHandle() {
+                    if (this.handle) return this.handle;
+                    const h = document.createElement('div');
+                    h.className = 'fc-fill-handle';
+                    this.handle = h; return h;
+                },
+                placeHandle() {
+                    if (! this.active) { if (this.handle) this.handle.remove(); return; }
+                    const q = this.rect();
+                    const td = this.cell(q.r1, q.c1); // untere-rechte Zelle der Auswahl
+                    if (! td) return;
+                    const h = this.ensureHandle();
+                    td.appendChild(h);
+                },
+                startFillDrag() {
+                    if (! this.active) return;
+                    this.fillDragging = true;
+                    this.fillSrc = this.rect();
+                    this.fillTarget = null;
+                    document.body.classList.add('fc-selecting');
+                },
+                fillMove(e) {
+                    const el = document.elementFromPoint(e.clientX, e.clientY);
+                    const td = el && el.closest && el.closest('td[data-fc-r]');
+                    if (! td) return;
+                    const r = +td.dataset.fcR, c = +td.dataset.fcC, s = this.fillSrc;
+                    const down = r - s.r1, right = c - s.c1;
+                    let t = null;
+                    if (down > 0 && down >= right) t = { r0: s.r0, r1: r, c0: s.c0, c1: s.c1, axis: 'v' };
+                    else if (right > 0) t = { r0: s.r0, r1: s.r1, c0: s.c0, c1: c, axis: 'h' };
+                    this.fillTarget = t;
+                    document.querySelectorAll('td.fc-fill-preview').forEach(x => x.classList.remove('fc-fill-preview'));
+                    if (t) for (let rr = t.r0; rr <= t.r1; rr++) for (let cc = t.c0; cc <= t.c1; cc++) {
+                        const inSrc = rr >= s.r0 && rr <= s.r1 && cc >= s.c0 && cc <= s.c1;
+                        if (! inSrc) { const x = this.cell(rr, cc); if (x) x.classList.add('fc-fill-preview'); }
+                    }
+                },
+                fillEnd() {
+                    this.fillDragging = false;
+                    document.body.classList.remove('fc-selecting');
+                    document.querySelectorAll('td.fc-fill-preview').forEach(x => x.classList.remove('fc-fill-preview'));
+                    const t = this.fillTarget, s = this.fillSrc;
+                    if (! t) return;
+                    const srcRows = s.r1 - s.r0 + 1, srcCols = s.c1 - s.c0 + 1, cells = [];
+                    for (let r = t.r0; r <= t.r1; r++) for (let c = t.c0; c <= t.c1; c++) {
+                        const inSrc = r >= s.r0 && r <= s.r1 && c >= s.c0 && c <= s.c1;
+                        if (inSrc) continue; // Quelle nicht überschreiben
+                        const tgt = this.cell(r, c);
+                        if (! tgt || tgt.dataset.fcEdit !== '1') continue; // nur editierbare Ziele
+                        const sr = (t.axis === 'v') ? s.r0 + ((r - s.r0) % srcRows) : r;
+                        const sc = (t.axis === 'h') ? s.c0 + ((c - s.c0) % srcCols) : c;
+                        const src = this.cell(sr, sc);
+                        cells.push({ row: tgt.dataset.fcRow, bucket: tgt.dataset.fcCol, value: (src && src.dataset.fcRaw) || '' });
+                    }
+                    if (cells.length && window.__fcWire) window.__fcWire.saveRange(cells, null, 'filled');
+                    // Auswahl auf Quelle+Ziel erweitern.
+                    this.anchor = { r: t.r0, c: t.c0 };
+                    this.active = { r: t.r1, c: t.c1 };
+                    this.paint();
                 }
             };
 
             // Maus: klicken wählt · Shift erweitert · ziehen spannt Bereich auf · Doppelklick editiert.
             document.addEventListener('mousedown', (e) => {
                 if (e.target === G.editor) return;
+                if (e.target === G.handle) { e.preventDefault(); e.stopPropagation(); G.startFillDrag(); return; } // Fill-Handle
                 if (e.target.closest && e.target.closest('a, button')) return; // Drill-Links/Buttons durchlassen
                 const td = e.target.closest && e.target.closest('td[data-fc-r]');
                 if (! td) return;
@@ -749,12 +823,16 @@
                 G.dragging = true; document.body.classList.add('fc-selecting');
             }, true);
             document.addEventListener('mousemove', (e) => {
+                if (G.fillDragging) { G.fillMove(e); return; }
                 if (! G.dragging) return;
                 const el = document.elementFromPoint(e.clientX, e.clientY);
                 const td = el && el.closest && el.closest('td[data-fc-r]');
                 if (td) { const r = +td.dataset.fcR, c = +td.dataset.fcC; if (! G.active || G.active.r !== r || G.active.c !== c) G.select(r, c, true); }
             }, true);
-            document.addEventListener('mouseup', () => { G.dragging = false; document.body.classList.remove('fc-selecting'); }, true);
+            document.addEventListener('mouseup', () => {
+                if (G.fillDragging) { G.fillEnd(); return; }
+                G.dragging = false; document.body.classList.remove('fc-selecting');
+            }, true);
             document.addEventListener('dblclick', (e) => {
                 const td = e.target.closest && e.target.closest('td[data-fc-r]');
                 if (td) { G.select(+td.dataset.fcR, +td.dataset.fcC, false); G.startEdit(null); }

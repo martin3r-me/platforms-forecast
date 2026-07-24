@@ -277,7 +277,7 @@
                     @if($editMode)
                         <div class="px-4 pb-2.5 flex items-center gap-2 text-[11px]">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium">@svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten aktiv</span>
-                            <span class="text-[var(--ui-muted)]">Offene Felder tippbar · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet · <span class="font-medium">Enter/Tab</span> → nächste Zelle (<span class="font-medium">⇧</span> zurück).</span>
+                            <span class="text-[var(--ui-muted)]"><span class="font-medium">Klick</span> wählt · <span class="font-medium">Ziehen/⇧</span> Bereich · <span class="font-medium">Tippen/Enter/Doppelklick</span> ändert · <span class="font-medium">Entf</span> leert · <span class="font-medium">Pfeile</span> bewegen · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet.</span>
 
                             @if($lastEdit)
                                 {{-- Settle-Fenster: 30 s rückgängig, dann festgeschrieben. --}}
@@ -333,11 +333,12 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @php $lastSection = '__init__'; @endphp
+                            @php $lastSection = '__init__'; $gridRowIdx = -1; @endphp
                             @foreach($rows as $rowKey => $row)
                                 @php
                                     $isF = $rowInfo[$rowKey]['isFormula'] ?? false;
                                     $sec = $rowInfo[$rowKey]['section'] ?? null;
+                                    $gridRowIdx++; // Grid-Zeilenindex (nur Datenzeilen; Sektions-Header zählen nicht)
                                     // Verteilt sich eine Grob-Eingabe durch REPLIZIEREN (Rate/Bestand) statt AUFTEILEN (Fluss)?
                                     // Spiegelt exakt das $constantDown der Anzeige, damit Affordanz und Verhalten übereinstimmen.
                                     $rowReplicates = ($rowInfo[$rowKey]['nonAdditive'] ?? false) || (($rowInfo[$rowKey]['timeAgg'] ?? 'flow') !== 'flow');
@@ -414,6 +415,13 @@
                                                 : ((($isMaster && ! $isF) || ! empty($rowInfo[$rowKey]['refPlans'])) ? 'derived'
                                                 : ($colOpen ? 'open' : ($colSpread ? 'spread' : 'locked')));
                                             $hasDetailMark = ($timeDetail[$rowKey][$bkt] ?? false) && $canZoom;
+                                            // Grid-Editor (Auswahl-Modell): editierbar = offen/spread im Bearbeiten-Modus.
+                                            $cellEditable = $editMode && ($cellState === 'open' || $cellState === 'spread');
+                                            $isFu = $rowInfo[$rowKey]['isFactor'] ?? false;
+                                            $cellObj = $isF ? null : ($row['cells'][$col['bucket']] ?? null);
+                                            $pfRaw = ($cellObj && ($cellObj['entered'] ?? false))
+                                                ? rtrim(rtrim(number_format($isFu ? ($cellObj['value'] ?? 0) * 100 : (float) ($cellObj['value'] ?? 0), 4, '.', ''), '0'), '.')
+                                                : '';
                                         @endphp
                                         <td class="relative text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top transition-colors
                                             {{ $cellState === 'open'
@@ -422,7 +430,10 @@
                                                     ? 'bg-amber-400/[0.05] cursor-text group-hover/row:bg-amber-400/[0.09] hover:!bg-amber-400/[0.14] hover:shadow-[inset_0_0_0_1px_rgb(251_191_36_/_0.6)]'
                                                 : ($cellState === 'locked'
                                                     ? 'opacity-50 group-hover/row:bg-[var(--ui-muted-5)]/50'
-                                                    : 'group-hover/row:bg-[var(--ui-muted-5)]/60')) }}">
+                                                    : 'group-hover/row:bg-[var(--ui-muted-5)]/60')) }}"
+                                            data-fc-r="{{ $gridRowIdx }}" data-fc-c="{{ $loop->index }}"
+                                            data-fc-row="{{ $rowKey }}" data-fc-col="{{ $col['bucket'] }}"
+                                            @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif>
                                             @if($hasDetailMark)
                                                 <span class="absolute top-1 left-1.5 text-[var(--ui-primary)]/45 group-hover/row:text-[var(--ui-primary)]/70 transition-colors" title="Enthält feineres Detail — Spalte anklicken zum Reinzoomen">
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
@@ -457,30 +468,9 @@
                                                     <span class="text-[var(--ui-muted)]/40">·</span>
                                                 @endif
                                             @else
-                                                @php $cell = $row['cells'][$col['bucket']] ?? null; @endphp
-                                                @if($editMode && ($cellState === 'open' || $cellState === 'spread'))
-                                                    {{-- Tippfeld: offene ODER grobe (spread) Zellen im Bearbeiten-Modus. Enter/Tab speichert (durchs Editier-Tor). --}}
-                                                    @php
-                                                        $isFu = $rowInfo[$rowKey]['isFactor'] ?? false;
-                                                        $cv = $cell['value'] ?? null;
-                                                        $pf = ($cell && ($cell['entered'] ?? false))
-                                                            ? rtrim(rtrim(number_format($isFu ? $cv * 100 : (float) $cv, 4, '.', ''), '0'), '.')
-                                                            : '';
-                                                        $spread = $cellState === 'spread';
-                                                    @endphp
-                                                    <input type="text" inputmode="decimal" value="{{ $pf }}" data-fc-cell data-fc-key="{{ $rowKey }}::{{ $col['bucket'] }}" data-fc-row="{{ $rowKey }}"
-                                                        wire:key="in-{{ $rowKey }}-{{ $col['bucket'] }}"
-                                                        @keydown.enter.prevent="fcNavCell($el, $event.shiftKey)"
-                                                        @keydown.tab.prevent="fcNavCell($el, $event.shiftKey)"
-                                                        @keydown.escape="$el.value='{{ $pf }}'; $el.blur()"
-                                                        @blur="window.__fcJustFilled ? (window.__fcJustFilled = false) : $wire.saveCell('{{ $rowKey }}', '{{ $col['bucket'] }}', $el.value)"
-                                                        class="w-full text-right tabular-nums bg-[var(--ui-surface-solid)] border rounded px-1.5 py-1 text-sm text-[var(--ui-secondary)] focus:outline-none focus:ring-2 {{ $spread ? 'border-amber-400/60 focus:ring-amber-400/40 focus:border-amber-400' : 'border-[var(--ui-primary)]/50 focus:ring-[var(--ui-primary)]/40 focus:border-[var(--ui-primary)]' }}"
-                                                        placeholder="{{ $spread ? 'verteilen…' : 'Wert…' }}" />
-                                                    {{-- Fill-Handle: ziehen, um den Wert über die nächsten offenen Zellen der Zeile zu füllen --}}
-                                                    <span class="fc-fill-handle {{ $spread ? 'fc-fill-handle--spread' : '' }}"
-                                                        @mousedown.prevent.stop="fcFillStart($event, '{{ $rowKey }}')"
-                                                        title="Ziehen, um {{ $spread ? 'grob über' : 'über' }} die nächsten offenen Zellen zu füllen"></span>
-                                                @elseif($cell && ($cell['entered'] || $cell['value'] != 0))
+                                                @php $cell = $cellObj; @endphp
+                                                {{-- Anzeige-Zelle (Auswahl-Modell): editiert wird über den Grid-Editor auf der aktiven Zelle, kein Input pro Zelle. --}}
+                                                @if($cell && ($cell['entered'] || $cell['value'] != 0))
                                                     @php
                                                         $val = $cell['value'];
                                                         $committed = $meta[$rowKey]['cellCommitted'][$col['bucket']] ?? $val;
@@ -645,15 +635,18 @@
         </x-ui-page-sidebar>
     </x-slot>
 
-    {{-- Fill-Handle + Bereichs-Hervorhebung fürs Ziehen (Copy-forward über die Zeile) --}}
+    {{-- Auswahl-Modell (Excel-Optik): Bereichs-Tönung, aktive-Zelle-Rahmen, Grid-Editor --}}
     <style>
-        .fc-fill-handle { position: absolute; bottom: 2px; right: 2px; width: 9px; height: 9px; border-radius: 2px;
-            background: var(--ui-primary); cursor: crosshair; opacity: 0; transition: opacity .12s; z-index: 5;
-            box-shadow: 0 0 0 1.5px var(--ui-surface-solid); }
-        .fc-fill-handle--spread { background: rgb(245 158 11); }
-        td:hover > .fc-fill-handle, .fc-fill-handle:hover { opacity: 1; }
-        .fc-fill-target { box-shadow: inset 0 0 0 2px rgb(245 158 11 / .85) !important; background: rgb(245 158 11 / .14) !important; }
-        body.fc-filling { user-select: none; cursor: crosshair; }
+        td[data-fc-r] { cursor: cell; user-select: none; }
+        td.fc-sel { background: color-mix(in srgb, var(--ui-primary) 12%, transparent) !important; }
+        td.fc-active { box-shadow: inset 0 0 0 2px var(--ui-primary); z-index: 2; }
+        td.fc-active.fc-sel { background: color-mix(in srgb, var(--ui-primary) 6%, transparent) !important; }
+        body.fc-selecting { user-select: none; }
+        .fc-editor { position: absolute; inset: 3px; width: calc(100% - 6px); box-sizing: border-box;
+            text-align: right; font-variant-numeric: tabular-nums; font-size: .875rem;
+            background: var(--ui-surface-solid); color: var(--ui-secondary);
+            border: 2px solid var(--ui-primary); border-radius: 4px; padding: 2px 5px; z-index: 10; outline: none; }
+        .fc-editor.fc-editor--spread { border-color: rgb(245 158 11); }
     </style>
 
     {{-- Tastatur-Navigation der Eingabe-Felder: Enter/Tab → nächste offene Zelle (Shift = zurück).
@@ -664,77 +657,128 @@
         // $wire dieser Komponente global greifbar machen (für Fill aus dem Drag-Handler).
         window.__fcWire = $wire;
 
-        // Fill-Handle ziehen: Wert der Quellzelle über die Zeile in die überstrichenen offenen
-        // Zellen füllen (ein Bulk-Roundtrip via saveCells). Bewegung bleibt in derselben Zeile.
-        window.fcFillStart = (ev, rowKey) => {
-            const srcTd = ev.target.closest('td');
-            const srcInput = srcTd && srcTd.querySelector('input[data-fc-cell]');
-            if (! srcInput) return;
-            const value = srcInput.value;
-            const esc = (window.CSS && CSS.escape) ? CSS.escape(rowKey) : rowKey;
-            const sel = 'input[data-fc-cell][data-fc-row="' + esc + '"]';
-            const rowInputs = Array.from(document.querySelectorAll(sel));
-            const srcIdx = rowInputs.indexOf(srcInput);
-            if (srcIdx < 0) return;
-            let curIdx = srcIdx;
-            document.body.classList.add('fc-filling');
-            const paint = () => {
-                const lo = Math.min(srcIdx, curIdx), hi = Math.max(srcIdx, curIdx);
-                rowInputs.forEach((el, i) => el.classList.toggle('fc-fill-target', i >= lo && i <= hi));
-            };
-            const move = (e) => {
-                const under = document.elementFromPoint(e.clientX, e.clientY);
-                const td = under && under.closest('td');
-                const inp = td && td.querySelector(sel);
-                if (inp) { const i = rowInputs.indexOf(inp); if (i >= 0 && i !== curIdx) { curIdx = i; paint(); } }
-            };
-            const end = () => {
-                document.removeEventListener('mousemove', move, true);
-                document.removeEventListener('mouseup', end, true);
-                document.body.classList.remove('fc-filling');
-                rowInputs.forEach(el => el.classList.remove('fc-fill-target'));
-                const lo = Math.min(srcIdx, curIdx), hi = Math.max(srcIdx, curIdx);
-                const buckets = rowInputs.slice(lo, hi + 1).map(el => el.dataset.fcKey.split('::')[1]);
-                if (buckets.length && window.__fcWire) {
-                    // Die noch fokussierte Quellzelle blurrt gleich und würde ein Einzel-saveCell
-                    // hinterherfeuern, das lastEdit (Fill mit count>1) überschreibt → Undo bräche.
-                    // Ein-Schuss-Flag: den nächsten Blur schlucken (Backstop nach 600 ms).
-                    window.__fcJustFilled = true;
-                    setTimeout(() => { window.__fcJustFilled = false; }, 600);
-                    window.__fcWire.saveCells(rowKey, buckets, value);
+        // ── Auswahl-Modell (Excel-artiges Grid) ────────────────────────────────────────────
+        // Zellen sind Anzeige (data-fc-r/c/row/col + data-fc-edit). EIN geteilter Editor-Input
+        // wird bei Bedarf in die aktive Zelle gesetzt. Speichern läuft durch saveCell/saveCells.
+        // Listener/Objekt nur EINMAL anlegen (überlebt @script-Re-Runs via wire:navigate).
+        if (! window.fcGrid) {
+            const G = window.fcGrid = {
+                active: null, anchor: null, editing: false, dragging: false, editor: null,
+                cell(r, c) { return document.querySelector('td[data-fc-r="' + r + '"][data-fc-c="' + c + '"]'); },
+                dims() {
+                    let mr = -1, mc = -1;
+                    document.querySelectorAll('td[data-fc-r]').forEach(td => { mr = Math.max(mr, +td.dataset.fcR); mc = Math.max(mc, +td.dataset.fcC); });
+                    return { mr, mc };
+                },
+                clamp(r, c) { const d = this.dims(); return { r: Math.max(0, Math.min(d.mr, r)), c: Math.max(0, Math.min(d.mc, c)) }; },
+                paint() {
+                    document.querySelectorAll('td.fc-active, td.fc-sel').forEach(td => td.classList.remove('fc-active', 'fc-sel'));
+                    if (! this.active) return;
+                    const a = this.anchor || this.active, b = this.active;
+                    const r0 = Math.min(a.r, b.r), r1 = Math.max(a.r, b.r), c0 = Math.min(a.c, b.c), c1 = Math.max(a.c, b.c);
+                    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const td = this.cell(r, c); if (td) td.classList.add('fc-sel'); }
+                    const at = this.cell(b.r, b.c); if (at) at.classList.add('fc-active');
+                },
+                select(r, c, extend) {
+                    this.commitEdit();
+                    const p = this.clamp(r, c);
+                    this.active = p;
+                    if (! extend || ! this.anchor) this.anchor = { r: p.r, c: p.c };
+                    this.paint();
+                    const td = this.cell(p.r, p.c); if (td) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                },
+                move(dr, dc, extend) { if (this.active) this.select(this.active.r + dr, this.active.c + dc, extend); },
+                ensureEditor() {
+                    if (this.editor) return this.editor;
+                    const ed = document.createElement('input');
+                    ed.type = 'text'; ed.inputMode = 'decimal'; ed.className = 'fc-editor';
+                    ed.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); this.commitEdit(); this.move(e.shiftKey ? -1 : 1, 0, false); }
+                        else if (e.key === 'Tab') { e.preventDefault(); this.commitEdit(); this.move(0, e.shiftKey ? -1 : 1, false); }
+                        else if (e.key === 'Escape') { e.preventDefault(); this.cancelEdit(); }
+                        e.stopPropagation();
+                    });
+                    ed.addEventListener('blur', () => { if (this.editing) this.commitEdit(); });
+                    document.body.appendChild(ed); ed.style.display = 'none';
+                    this.editor = ed; return ed;
+                },
+                startEdit(initial) {
+                    if (! this.active) return;
+                    const td = this.cell(this.active.r, this.active.c);
+                    if (! td || td.dataset.fcEdit !== '1') return; // nur offene/spread editieren
+                    this.editing = true;
+                    const ed = this.ensureEditor();
+                    ed.dataset.row = td.dataset.fcRow; ed.dataset.col = td.dataset.fcCol;
+                    ed.classList.toggle('fc-editor--spread', td.dataset.fcSpread === '1');
+                    ed.style.display = ''; td.appendChild(ed);
+                    ed.value = (initial != null) ? initial : (td.dataset.fcRaw || '');
+                    ed.focus(); if (initial == null) ed.select();
+                },
+                stashEditor() { if (this.editor) { this.editor.style.display = 'none'; document.body.appendChild(this.editor); } },
+                commitEdit() {
+                    if (! this.editing) return;
+                    this.editing = false;
+                    const ed = this.editor, row = ed.dataset.row, col = ed.dataset.col, val = ed.value;
+                    this.stashEditor();
+                    if (window.__fcWire) window.__fcWire.saveCell(row, col, val);
+                },
+                cancelEdit() { if (this.editing) { this.editing = false; this.stashEditor(); } },
+                clearSel() {
+                    if (! this.active) return;
+                    const a = this.anchor || this.active, b = this.active;
+                    const r0 = Math.min(a.r, b.r), r1 = Math.max(a.r, b.r), c0 = Math.min(a.c, b.c), c1 = Math.max(a.c, b.c);
+                    const byRow = {};
+                    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+                        const td = this.cell(r, c);
+                        if (td && td.dataset.fcEdit === '1') (byRow[td.dataset.fcRow] = byRow[td.dataset.fcRow] || []).push(td.dataset.fcCol);
+                    }
+                    const rows = Object.keys(byRow);
+                    if (rows.length && window.__fcWire) rows.forEach(rk => window.__fcWire.saveCells(rk, byRow[rk], ''));
                 }
             };
-            paint();
-            document.addEventListener('mousemove', move, true);
-            document.addEventListener('mouseup', end, true);
-        };
 
-        window.fcNavCell = (el, back) => {
-            const table = el.closest('table');
-            if (! table) { el.blur(); return; }
-            const cells = Array.from(table.querySelectorAll('input[data-fc-cell]'));
-            const next = cells[cells.indexOf(el) + (back ? -1 : 1)];
-            if (! next) { el.blur(); return; }
-            // Ziel merken (überlebt den Re-Render) + optimistisch fokussieren.
-            window.fcPendingFocus = next.dataset.fcKey;
-            next.focus();
-        };
+            // Maus: klicken wählt · Shift erweitert · ziehen spannt Bereich auf · Doppelklick editiert.
+            document.addEventListener('mousedown', (e) => {
+                if (e.target === G.editor) return;
+                if (e.target.closest && e.target.closest('a, button')) return; // Drill-Links/Buttons durchlassen
+                const td = e.target.closest && e.target.closest('td[data-fc-r]');
+                if (! td) return;
+                e.preventDefault();
+                if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
+                G.select(+td.dataset.fcR, +td.dataset.fcC, e.shiftKey);
+                G.dragging = true; document.body.classList.add('fc-selecting');
+            }, true);
+            document.addEventListener('mousemove', (e) => {
+                if (! G.dragging) return;
+                const el = document.elementFromPoint(e.clientX, e.clientY);
+                const td = el && el.closest && el.closest('td[data-fc-r]');
+                if (td) { const r = +td.dataset.fcR, c = +td.dataset.fcC; if (! G.active || G.active.r !== r || G.active.c !== c) G.select(r, c, true); }
+            }, true);
+            document.addEventListener('mouseup', () => { G.dragging = false; document.body.classList.remove('fc-selecting'); }, true);
+            document.addEventListener('dblclick', (e) => {
+                const td = e.target.closest && e.target.closest('td[data-fc-r]');
+                if (td) { G.select(+td.dataset.fcR, +td.dataset.fcC, false); G.startEdit(null); }
+            }, true);
 
-        // Nach dem Speichern (Livewire-Commit + Morph) den Fokus erneut auf die Zielzelle
-        // setzen, falls der Morph ihn verstellt hat — passiert beim Leeren einer schon
-        // erfassten Zelle (entered true→false rendert das Feld neu). Nur wenn nötig, damit
-        // der bereits funktionierende Vorwärts-Pfad (Fokus schon am Ziel) unangetastet bleibt.
-        if (! window.fcFocusHook) {
-            window.fcFocusHook = true;
-            Livewire.hook('commit', ({ succeed }) => {
-                succeed(() => {
-                    const key = window.fcPendingFocus;
-                    if (! key) return;
-                    window.fcPendingFocus = null;
-                    const target = document.querySelector('input[data-fc-key="' + key + '"]');
-                    if (target && document.activeElement !== target) target.focus();
-                });
-            });
+            // Tastatur (nur wenn eine Grid-Zelle aktiv ist, nicht editiert wird und kein Feld fokussiert ist).
+            document.addEventListener('keydown', (e) => {
+                if (G.editing || ! G.active) return;
+                const ae = document.activeElement;
+                if (ae && ae !== document.body && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+                const k = e.key;
+                if (k === 'ArrowUp') { e.preventDefault(); G.move(-1, 0, e.shiftKey); }
+                else if (k === 'ArrowDown') { e.preventDefault(); G.move(1, 0, e.shiftKey); }
+                else if (k === 'ArrowLeft') { e.preventDefault(); G.move(0, -1, e.shiftKey); }
+                else if (k === 'ArrowRight') { e.preventDefault(); G.move(0, 1, e.shiftKey); }
+                else if (k === 'Enter' || k === 'F2') { e.preventDefault(); G.startEdit(null); }
+                else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); G.clearSel(); }
+                else if (k.length === 1 && /[-0-9.,+*/%]/.test(k)) { e.preventDefault(); G.startEdit(k); }
+            }, true);
+
+            // Auswahl nach Livewire-Re-Render (Speichern) neu zeichnen.
+            if (window.Livewire) {
+                Livewire.hook('commit', ({ succeed }) => { succeed(() => { G.paint(); }); });
+            }
         }
     </script>
     @endscript

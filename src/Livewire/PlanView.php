@@ -180,7 +180,7 @@ class PlanView extends Component
             }
             $raw = trim($value ?? (string) ($c['value'] ?? ''));
             try {
-                $this->applyCell($plan, $service, $rowKey, $bucket, $raw, $factor[$rowKey]);
+                $this->applyCell($plan, $service, $rowKey, $bucket, $raw, $factor[$rowKey], literal: true);
                 $written[] = ['row' => $rowKey, 'bucket' => $bucket];
             } catch (\Throwable $e) {
                 $skipped++; // gesperrt/ungültig → überspringen
@@ -214,7 +214,7 @@ class PlanView extends Component
      * Eine Zelle durchs Editier-Tor schreiben (leer = löschen). Inline-Operatoren relativ zum
      * aktuellen Wert. Wirft \InvalidArgumentException (unlesbare Zahl) bzw. \DomainException (Tor).
      */
-    private function applyCell(ForecastPlan $plan, PlanService $service, string $rowKey, string $bucket, string $raw, bool $isFactor): void
+    private function applyCell(ForecastPlan $plan, PlanService $service, string $rowKey, string $bucket, string $raw, bool $isFactor, bool $literal = false): void
     {
         if ($raw === '') {
             // Löschen — ebenfalls durchs Tor.
@@ -227,12 +227,16 @@ class PlanView extends Component
             return;
         }
 
-        // Aktuellen (eingegebenen) Wert holen — Basis für relative Operatoren (+, -, *, /, %).
-        $entry = ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucket)->first();
-        $currentStored = $entry ? (float) $entry->value : 0.0;
-        $currentDisplayed = $isFactor ? $currentStored * 100 : $currentStored; // Faktor rechnet in %-Anzeige
-
-        $resolved = $this->resolveInput($raw, $currentDisplayed);
+        if ($literal) {
+            // Einfügen/Fill: Wert wörtlich setzen (Excel „-500" = setzen, NICHT der Minus-Operator).
+            $resolved = $this->parseNumber($raw);
+        } else {
+            // Tippen: Inline-Operatoren relativ zum aktuellen (angezeigten) Wert.
+            $entry = ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucket)->first();
+            $currentStored = $entry ? (float) $entry->value : 0.0;
+            $currentDisplayed = $isFactor ? $currentStored * 100 : $currentStored; // Faktor rechnet in %-Anzeige
+            $resolved = $this->resolveInput($raw, $currentDisplayed);
+        }
         if ($resolved === null) {
             throw new \InvalidArgumentException('Zahl oder Rechnung eingeben — z. B. 100 · +50 · +5% · *1,1 · /2 · -500');
         }

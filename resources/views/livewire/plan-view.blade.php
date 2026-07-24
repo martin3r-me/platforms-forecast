@@ -277,7 +277,7 @@
                     @if($editMode)
                         <div class="px-4 pb-2.5 flex items-center gap-2 text-[11px]">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium">@svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten aktiv</span>
-                            <span class="text-[var(--ui-muted)]"><span class="font-medium">Klick</span> wählt · <span class="font-medium">Ziehen/⇧</span> Bereich · <span class="font-medium">Tippen/Enter/Doppelklick</span> ändert · <span class="font-medium">Entf</span> leert · <span class="font-medium">Pfeile</span> bewegen · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet.</span>
+                            <span class="text-[var(--ui-muted)]"><span class="font-medium">Klick</span> wählt · <span class="font-medium">Ziehen/⇧</span> Bereich · <span class="font-medium">Tippen/Enter/Doppelklick</span> ändert · <span class="font-medium">Entf</span> leert · <span class="font-medium">Pfeile</span> bewegen · <span class="font-medium">⌘/Strg+C/V</span> kopiert/fügt ein · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet.</span>
 
                             @if($lastEdit)
                                 {{-- Settle-Fenster: 30 s rückgängig, dann festgeschrieben. --}}
@@ -286,7 +286,7 @@
                                     class="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 font-medium ml-auto">
                                     @svg('heroicon-o-check-circle','w-3.5 h-3.5')
                                     @php $fcAct = $lastEdit['action'] ?? 'saved'; $fcCnt = $lastEdit['count'] ?? 1; @endphp
-                                    <span>@if($fcAct === 'saved') „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert @else {{ $fcCnt }} Zellen{{ $lastEdit['label'] ? ' · '.\Illuminate\Support\Str::limit($lastEdit['label'], 16) : '' }} {{ $fcAct === 'cleared' ? 'geleert' : 'gefüllt' }} @endif · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
+                                    <span>@if($fcAct === 'saved') „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert @else {{ $fcCnt }} Zellen{{ $lastEdit['label'] ? ' · '.\Illuminate\Support\Str::limit($lastEdit['label'], 16) : '' }} {{ $fcAct === 'cleared' ? 'geleert' : ($fcAct === 'pasted' ? 'eingefügt' : 'gefüllt') }} @endif · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
                                     <button type="button" wire:click="undoLastEdit"
                                         class="inline-flex items-center gap-0.5 underline decoration-dotted hover:text-emerald-900">
                                         @svg('heroicon-o-arrow-uturn-left','w-3 h-3') rückgängig
@@ -807,6 +807,46 @@
                     this.anchor = { r: t.r0, c: t.c0 };
                     this.active = { r: t.r1, c: t.c1 };
                     this.paint();
+                },
+                // ── Copy/Paste (TSV, Excel-kompatibel) ──────────────────────────────────────
+                cellText(td) {
+                    const n = td.querySelector('.tabular-nums');
+                    return ((n ? n.textContent : td.textContent) || '').replace(/[€%≈·]/g, '').replace(/\s+/g, '').trim();
+                },
+                selectionTSV() {
+                    if (! this.active) return null;
+                    const q = this.rect(), rows = [];
+                    for (let r = q.r0; r <= q.r1; r++) {
+                        const cols = [];
+                        for (let c = q.c0; c <= q.c1; c++) {
+                            const td = this.cell(r, c);
+                            cols.push(! td ? '' : (td.dataset.fcEdit === '1' ? (td.dataset.fcRaw || '') : this.cellText(td)));
+                        }
+                        rows.push(cols.join('\t'));
+                    }
+                    return rows.join('\n');
+                },
+                pasteText(text) {
+                    if (! this.active || text == null) return;
+                    const g2 = text.replace(/\r\n?/g, '\n').split('\n').map(l => l.split('\t'));
+                    while (g2.length > 1 && g2[g2.length - 1].length === 1 && g2[g2.length - 1][0] === '') g2.pop();
+                    const cells = [], q = this.rect();
+                    const single = g2.length === 1 && g2[0].length === 1;
+                    if (single && (q.r0 !== q.r1 || q.c0 !== q.c1)) {
+                        // 1 Wert → ganze aktuelle Auswahl füllen
+                        this.rangeCells(true).forEach(c => cells.push({ row: c.row, bucket: c.bucket, value: g2[0][0] }));
+                    } else {
+                        // Block ab aktiver Zelle einsetzen (Excel-Import)
+                        const b = this.active;
+                        for (let i = 0; i < g2.length; i++) for (let j = 0; j < g2[i].length; j++) {
+                            const td = this.cell(b.r + i, b.c + j);
+                            if (td && td.dataset.fcEdit === '1') cells.push({ row: td.dataset.fcRow, bucket: td.dataset.fcCol, value: g2[i][j] });
+                        }
+                        this.anchor = { r: b.r, c: b.c };
+                        this.active = this.clamp(b.r + g2.length - 1, b.c + g2[0].length - 1);
+                        this.paint();
+                    }
+                    if (cells.length && window.__fcWire) window.__fcWire.saveRange(cells, null, 'pasted');
                 }
             };
 
@@ -851,6 +891,33 @@
                 else if (k === 'Enter' || k === 'F2') { e.preventDefault(); G.startEdit(null); }
                 else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); G.clearSel(); }
                 else if (k.length === 1 && /[-0-9.,+*/%]/.test(k)) { e.preventDefault(); G.startEdit(k); }
+            }, true);
+
+            // Copy/Cut/Paste über die nativen Events (keine Permission-Prompts). Nur wenn eine
+            // Grid-Zelle aktiv ist, nicht editiert wird und kein anderes Feld fokussiert ist.
+            const otherFieldFocused = () => { const a = document.activeElement; return a && a !== document.body && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable); };
+            document.addEventListener('copy', (e) => {
+                if (! G.active || G.editing || otherFieldFocused()) return;
+                if (window.getSelection && ! window.getSelection().isCollapsed) return; // echte Textauswahl hat Vorrang
+                const tsv = G.selectionTSV();
+                if (tsv == null) return;
+                (e.clipboardData || window.clipboardData).setData('text/plain', tsv);
+                e.preventDefault();
+            }, true);
+            document.addEventListener('cut', (e) => {
+                if (! G.active || G.editing || otherFieldFocused()) return;
+                if (window.getSelection && ! window.getSelection().isCollapsed) return;
+                const tsv = G.selectionTSV();
+                if (tsv == null) return;
+                (e.clipboardData || window.clipboardData).setData('text/plain', tsv);
+                e.preventDefault();
+                G.clearSel();
+            }, true);
+            document.addEventListener('paste', (e) => {
+                if (! G.active || G.editing || otherFieldFocused()) return;
+                const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+                e.preventDefault();
+                G.pasteText(text);
             }, true);
 
             // Auswahl nach Livewire-Re-Render (Speichern) neu zeichnen.

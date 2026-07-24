@@ -473,7 +473,7 @@
                                                         @keydown.enter.prevent="fcNavCell($el, $event.shiftKey)"
                                                         @keydown.tab.prevent="fcNavCell($el, $event.shiftKey)"
                                                         @keydown.escape="$el.value='{{ $pf }}'; $el.blur()"
-                                                        @blur="$wire.saveCell('{{ $rowKey }}', '{{ $col['bucket'] }}', $el.value)"
+                                                        @blur="window.__fcJustFilled ? (window.__fcJustFilled = false) : $wire.saveCell('{{ $rowKey }}', '{{ $col['bucket'] }}', $el.value)"
                                                         class="w-full text-right tabular-nums bg-[var(--ui-surface-solid)] border rounded px-1.5 py-1 text-sm text-[var(--ui-secondary)] focus:outline-none focus:ring-2 {{ $spread ? 'border-amber-400/60 focus:ring-amber-400/40 focus:border-amber-400' : 'border-[var(--ui-primary)]/50 focus:ring-[var(--ui-primary)]/40 focus:border-[var(--ui-primary)]' }}"
                                                         placeholder="{{ $spread ? 'verteilen…' : 'Wert…' }}" />
                                                     {{-- Fill-Handle: ziehen, um den Wert über die nächsten offenen Zellen der Zeile zu füllen --}}
@@ -695,7 +695,14 @@
                 rowInputs.forEach(el => el.classList.remove('fc-fill-target'));
                 const lo = Math.min(srcIdx, curIdx), hi = Math.max(srcIdx, curIdx);
                 const buckets = rowInputs.slice(lo, hi + 1).map(el => el.dataset.fcKey.split('::')[1]);
-                if (buckets.length && window.__fcWire) window.__fcWire.saveCells(rowKey, buckets, value);
+                if (buckets.length && window.__fcWire) {
+                    // Die noch fokussierte Quellzelle blurrt gleich und würde ein Einzel-saveCell
+                    // hinterherfeuern, das lastEdit (Fill mit count>1) überschreibt → Undo bräche.
+                    // Ein-Schuss-Flag: den nächsten Blur schlucken (Backstop nach 600 ms).
+                    window.__fcJustFilled = true;
+                    setTimeout(() => { window.__fcJustFilled = false; }, 600);
+                    window.__fcWire.saveCells(rowKey, buckets, value);
+                }
             };
             paint();
             document.addEventListener('mousemove', move, true);

@@ -285,7 +285,7 @@
                                     x-init="let t = setInterval(() => { if (--left <= 0) { clearInterval(t); $wire.clearLastEditIf({{ $editNonce }}) } }, 1000)"
                                     class="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 font-medium ml-auto">
                                     @svg('heroicon-o-check-circle','w-3.5 h-3.5')
-                                    <span>@if(($lastEdit['count'] ?? 1) > 1){{ $lastEdit['count'] }} Zellen von „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 18) }}" gefüllt@else„{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert@endif · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
+                                    <span>@if(($lastEdit['count'] ?? 1) > 1){{ $lastEdit['count'] }} Zellen von „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 18) }}" gefüllt @else „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert @endif · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
                                     <button type="button" wire:click="undoLastEdit"
                                         class="inline-flex items-center gap-0.5 underline decoration-dotted hover:text-emerald-900">
                                         @svg('heroicon-o-arrow-uturn-left','w-3 h-3') rückgängig

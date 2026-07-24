@@ -49,16 +49,13 @@ final class CellEditability
         $lock = (new PlanAnalyzer())->lockRule($plan);
         $status = LockService::status($bucketKey, $lock, now());
 
-        // Grob-Eingabe: Zelle gröber als die Erfassungs-Ebene ('mixed'). Bei FLUSS-Zeilen erlaubt —
-        // der Wert wird als Schätzung am groben Bucket gespeichert und verteilt sich per
-        // Verteilungsschlüssel nach unten (die ≈-Werte). Nicht-Fluss (Ø/Bestand) bleibt gesperrt,
-        // weil „per Gewicht aufteilen" für Raten/Bestände keinen Sinn ergibt.
+        // Grob-Eingabe: Zelle gröber als die Erfassungs-Ebene ('mixed'). Bei JEDER Eingabe-Zeile
+        // erlaubt — der Wert wird als Schätzung am groben Bucket gespeichert; die Anzeige verteilt
+        // ihn nach der Aggregation der Zeile: Fluss → per Verteilungsschlüssel aufgeteilt,
+        // Rate/Bestand (avg/stock/nonAdditive) → konstant je Teilperiode repliziert
+        // (wie Anaplan-Breakback / Oracle-Spreading / TM1). Formel/Ordner sind oben schon raus.
         if ($status['state'] === 'mixed') {
-            if (($row->config['time_agg'] ?? 'flow') === 'flow') {
-                return ['editable' => true, 'state' => 'spread', 'reason' => null];
-            }
-
-            return ['editable' => false, 'state' => 'locked', 'reason' => 'Gröber als die Sperr-Ebene — bitte auf der Erfassungs-Ebene eingeben.'];
+            return ['editable' => true, 'state' => 'spread', 'reason' => null];
         }
 
         if ($status['state'] !== 'open') {

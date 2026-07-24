@@ -270,7 +270,7 @@
                             <span class="inline-flex items-center gap-1" title="Berechnet: ergibt sich aus anderen Zeilen"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span> berechnet</span>
                             <span class="inline-flex items-center gap-1" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch"><span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600">↑</span> abgeleitet</span>
                             <span class="inline-flex items-center gap-1" title="Zu: Periode geschlossen — keine Eingabe">@svg('heroicon-o-lock-closed','w-3 h-3 text-[var(--ui-muted)]/60') zu</span>
-                            <span class="inline-flex items-center gap-1" title="Grob-Eingabe: gröber als die Erfassungs-Ebene — der Wert verteilt sich per Verteilungsschlüssel nach unten (nur Fluss-Zeilen)">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-amber-500/70') grob · verteilt</span>
+                            <span class="inline-flex items-center gap-1" title="Grob-Eingabe: gröber als die Erfassungs-Ebene — der Wert verteilt sich nach unten. Fluss wird per Schlüssel aufgeteilt, Rate/Bestand konstant repliziert.">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-amber-500/70') grob · verteilt</span>
                         </div>
                     </div>
 
@@ -338,7 +338,9 @@
                                 @php
                                     $isF = $rowInfo[$rowKey]['isFormula'] ?? false;
                                     $sec = $rowInfo[$rowKey]['section'] ?? null;
-                                    $rowIsFlow = ($rowInfo[$rowKey]['timeAgg'] ?? 'flow') === 'flow';
+                                    // Verteilt sich eine Grob-Eingabe durch REPLIZIEREN (Rate/Bestand) statt AUFTEILEN (Fluss)?
+                                    // Spiegelt exakt das $constantDown der Anzeige, damit Affordanz und Verhalten übereinstimmen.
+                                    $rowReplicates = ($rowInfo[$rowKey]['nonAdditive'] ?? false) || (($rowInfo[$rowKey]['timeAgg'] ?? 'flow') !== 'flow');
                                 @endphp
                                 @if($sec && $sec !== $lastSection)
                                     <tr>
@@ -402,10 +404,10 @@
                                             // beim Speichern ablehnt (z. B. Halbjahr gröber als die Sperr-Ebene → 'mixed').
                                             $colState = $colStatus[$bkt]['state'] ?? 'mixed';
                                             $colOpen = ($colState === 'open');
-                                            // Grob-Eingabe: Spalte gröber als die Sperr-Ebene ('mixed') ist bei FLUSS-Zeilen tippbar —
-                                            // der Wert wird als Schätzung gespeichert und verteilt sich per Schlüssel nach unten
-                                            // (die ≈-Werte). Nicht-Fluss + closed/pending bleiben gesperrt.
-                                            $colSpread = ($colState === 'mixed' && $rowIsFlow);
+                                            // Grob-Eingabe: Spalte gröber als die Sperr-Ebene ('mixed') ist bei JEDER Eingabe-Zeile
+                                            // tippbar — der Wert wird als Schätzung gespeichert und verteilt sich nach unten:
+                                            // Fluss teilt (Schlüssel), Rate/Bestand repliziert. closed/pending bleiben gesperrt.
+                                            $colSpread = ($colState === 'mixed');
                                             // Feld-Zustände — Orientierung: sieht es aus wie ein Feld, kannst du tippen.
                                             //   computed = ƒ · derived = Ordner/Detail · locked = zu · open = tippbar · spread = grob→verteilt
                                             $cellState = $isF ? 'computed'
@@ -426,7 +428,7 @@
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
                                                 </span>
                                             @elseif($cellState === 'spread')
-                                                <span class="absolute top-1 left-1.5 text-amber-500/60" title="Grob-Eingabe: gröber als die Erfassungs-Ebene — der Wert wird als Schätzung gespeichert und verteilt sich per Verteilungsschlüssel nach unten (≈-Werte).">
+                                                <span class="absolute top-1 left-1.5 text-amber-500/60" title="Grob-Eingabe (gröber als die Erfassungs-Ebene): {{ $rowReplicates ? 'gilt als Rate/Bestand konstant für jede Teilperiode (repliziert).' : 'wird per Verteilungsschlüssel auf die Teilperioden aufgeteilt.' }} Gespeichert als Schätzung, ≈-Werte darunter.">
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
                                                 </span>
                                             @elseif($cellState === 'locked')

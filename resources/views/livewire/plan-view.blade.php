@@ -453,7 +453,7 @@
                                                             ? rtrim(rtrim(number_format($isFu ? $cv * 100 : (float) $cv, 4, '.', ''), '0'), '.')
                                                             : '';
                                                     @endphp
-                                                    <input type="text" inputmode="decimal" value="{{ $pf }}" data-fc-cell
+                                                    <input type="text" inputmode="decimal" value="{{ $pf }}" data-fc-cell data-fc-key="{{ $rowKey }}::{{ $col['bucket'] }}"
                                                         wire:key="in-{{ $rowKey }}-{{ $col['bucket'] }}"
                                                         @keydown.enter.prevent="fcNavCell($el, $event.shiftKey)"
                                                         @keydown.tab.prevent="fcNavCell($el, $event.shiftKey)"
@@ -636,8 +636,28 @@
             if (! table) { el.blur(); return; }
             const cells = Array.from(table.querySelectorAll('input[data-fc-cell]'));
             const next = cells[cells.indexOf(el) + (back ? -1 : 1)];
-            next ? next.focus() : el.blur();
+            if (! next) { el.blur(); return; }
+            // Ziel merken (überlebt den Re-Render) + optimistisch fokussieren.
+            window.fcPendingFocus = next.dataset.fcKey;
+            next.focus();
         };
+
+        // Nach dem Speichern (Livewire-Commit + Morph) den Fokus erneut auf die Zielzelle
+        // setzen, falls der Morph ihn verstellt hat — passiert beim Leeren einer schon
+        // erfassten Zelle (entered true→false rendert das Feld neu). Nur wenn nötig, damit
+        // der bereits funktionierende Vorwärts-Pfad (Fokus schon am Ziel) unangetastet bleibt.
+        if (! window.fcFocusHook) {
+            window.fcFocusHook = true;
+            Livewire.hook('commit', ({ succeed }) => {
+                succeed(() => {
+                    const key = window.fcPendingFocus;
+                    if (! key) return;
+                    window.fcPendingFocus = null;
+                    const target = document.querySelector('input[data-fc-key="' + key + '"]');
+                    if (target && document.activeElement !== target) target.focus();
+                });
+            });
+        }
     </script>
     @endscript
 </x-ui-page>

@@ -276,7 +276,7 @@
                     @if($editMode)
                         <div class="px-4 pb-2.5 flex items-center gap-2 text-[11px]">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium">@svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten aktiv</span>
-                            <span class="text-[var(--ui-muted)]">Offene Felder tippbar · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet · Enter speichert.</span>
+                            <span class="text-[var(--ui-muted)]">Offene Felder tippbar · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet · <span class="font-medium">Enter/Tab</span> → nächste Zelle (<span class="font-medium">⇧</span> zurück).</span>
 
                             @if($lastEdit)
                                 {{-- Settle-Fenster: 30 s rückgängig, dann festgeschrieben. --}}
@@ -453,9 +453,10 @@
                                                             ? rtrim(rtrim(number_format($isFu ? $cv * 100 : (float) $cv, 4, '.', ''), '0'), '.')
                                                             : '';
                                                     @endphp
-                                                    <input type="text" inputmode="decimal" value="{{ $pf }}"
+                                                    <input type="text" inputmode="decimal" value="{{ $pf }}" data-fc-cell
                                                         wire:key="in-{{ $rowKey }}-{{ $col['bucket'] }}"
-                                                        @keydown.enter.prevent="$el.blur()"
+                                                        @keydown.enter.prevent="fcNavCell($el, $event.shiftKey)"
+                                                        @keydown.tab.prevent="fcNavCell($el, $event.shiftKey)"
                                                         @keydown.escape="$el.value='{{ $pf }}'; $el.blur()"
                                                         @blur="$wire.saveCell('{{ $rowKey }}', '{{ $col['bucket'] }}', $el.value)"
                                                         class="w-full text-right tabular-nums bg-[var(--ui-surface-solid)] border border-[var(--ui-primary)]/50 rounded px-1.5 py-1 text-sm text-[var(--ui-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-primary)]/40 focus:border-[var(--ui-primary)]"
@@ -624,4 +625,19 @@
             </div>
         </x-ui-page-sidebar>
     </x-slot>
+
+    {{-- Tastatur-Navigation der Eingabe-Felder: Enter/Tab → nächste offene Zelle (Shift = zurück).
+         Der Fokuswechsel blurrt das aktuelle Feld → @blur speichert durchs Editier-Tor.
+         Reihenfolge = DOM-Reihenfolge (zeilenweise links→rechts, dann nächste Zeile). --}}
+    @script
+    <script>
+        window.fcNavCell = (el, back) => {
+            const table = el.closest('table');
+            if (! table) { el.blur(); return; }
+            const cells = Array.from(table.querySelectorAll('input[data-fc-cell]'));
+            const next = cells[cells.indexOf(el) + (back ? -1 : 1)];
+            next ? next.focus() : el.blur();
+        };
+    </script>
+    @endscript
 </x-ui-page>

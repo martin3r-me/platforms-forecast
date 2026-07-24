@@ -285,8 +285,8 @@
                                     x-init="let t = setInterval(() => { if (--left <= 0) { clearInterval(t); $wire.clearLastEditIf({{ $editNonce }}) } }, 1000)"
                                     class="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 font-medium ml-auto">
                                     @svg('heroicon-o-check-circle','w-3.5 h-3.5')
-                                    <span>„{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
-                                    <button type="button" wire:click="undoCell('{{ $lastEdit['row'] }}', '{{ $lastEdit['bucket'] }}')"
+                                    <span>@if(($lastEdit['count'] ?? 1) > 1){{ $lastEdit['count'] }} Zellen von „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 18) }}" gefüllt@else„{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert@endif · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
+                                    <button type="button" wire:click="undoLastEdit"
                                         class="inline-flex items-center gap-0.5 underline decoration-dotted hover:text-emerald-900">
                                         @svg('heroicon-o-arrow-uturn-left','w-3 h-3') rückgängig
                                     </button>
@@ -468,7 +468,7 @@
                                                             : '';
                                                         $spread = $cellState === 'spread';
                                                     @endphp
-                                                    <input type="text" inputmode="decimal" value="{{ $pf }}" data-fc-cell data-fc-key="{{ $rowKey }}::{{ $col['bucket'] }}"
+                                                    <input type="text" inputmode="decimal" value="{{ $pf }}" data-fc-cell data-fc-key="{{ $rowKey }}::{{ $col['bucket'] }}" data-fc-row="{{ $rowKey }}"
                                                         wire:key="in-{{ $rowKey }}-{{ $col['bucket'] }}"
                                                         @keydown.enter.prevent="fcNavCell($el, $event.shiftKey)"
                                                         @keydown.tab.prevent="fcNavCell($el, $event.shiftKey)"
@@ -476,6 +476,10 @@
                                                         @blur="$wire.saveCell('{{ $rowKey }}', '{{ $col['bucket'] }}', $el.value)"
                                                         class="w-full text-right tabular-nums bg-[var(--ui-surface-solid)] border rounded px-1.5 py-1 text-sm text-[var(--ui-secondary)] focus:outline-none focus:ring-2 {{ $spread ? 'border-amber-400/60 focus:ring-amber-400/40 focus:border-amber-400' : 'border-[var(--ui-primary)]/50 focus:ring-[var(--ui-primary)]/40 focus:border-[var(--ui-primary)]' }}"
                                                         placeholder="{{ $spread ? 'verteilen…' : 'Wert…' }}" />
+                                                    {{-- Fill-Handle: ziehen, um den Wert über die nächsten offenen Zellen der Zeile zu füllen --}}
+                                                    <span class="fc-fill-handle {{ $spread ? 'fc-fill-handle--spread' : '' }}"
+                                                        @mousedown.prevent.stop="fcFillStart($event, '{{ $rowKey }}')"
+                                                        title="Ziehen, um {{ $spread ? 'grob über' : 'über' }} die nächsten offenen Zellen zu füllen"></span>
                                                 @elseif($cell && ($cell['entered'] || $cell['value'] != 0))
                                                     @php
                                                         $val = $cell['value'];
@@ -641,11 +645,63 @@
         </x-ui-page-sidebar>
     </x-slot>
 
+    {{-- Fill-Handle + Bereichs-Hervorhebung fürs Ziehen (Copy-forward über die Zeile) --}}
+    <style>
+        .fc-fill-handle { position: absolute; bottom: 2px; right: 2px; width: 9px; height: 9px; border-radius: 2px;
+            background: var(--ui-primary); cursor: crosshair; opacity: 0; transition: opacity .12s; z-index: 5;
+            box-shadow: 0 0 0 1.5px var(--ui-surface-solid); }
+        .fc-fill-handle--spread { background: rgb(245 158 11); }
+        td:hover > .fc-fill-handle, .fc-fill-handle:hover { opacity: 1; }
+        .fc-fill-target { box-shadow: inset 0 0 0 2px rgb(245 158 11 / .85) !important; background: rgb(245 158 11 / .14) !important; }
+        body.fc-filling { user-select: none; cursor: crosshair; }
+    </style>
+
     {{-- Tastatur-Navigation der Eingabe-Felder: Enter/Tab → nächste offene Zelle (Shift = zurück).
          Der Fokuswechsel blurrt das aktuelle Feld → @blur speichert durchs Editier-Tor.
          Reihenfolge = DOM-Reihenfolge (zeilenweise links→rechts, dann nächste Zeile). --}}
     @script
     <script>
+        // $wire dieser Komponente global greifbar machen (für Fill aus dem Drag-Handler).
+        window.__fcWire = $wire;
+
+        // Fill-Handle ziehen: Wert der Quellzelle über die Zeile in die überstrichenen offenen
+        // Zellen füllen (ein Bulk-Roundtrip via saveCells). Bewegung bleibt in derselben Zeile.
+        window.fcFillStart = (ev, rowKey) => {
+            const srcTd = ev.target.closest('td');
+            const srcInput = srcTd && srcTd.querySelector('input[data-fc-cell]');
+            if (! srcInput) return;
+            const value = srcInput.value;
+            const esc = (window.CSS && CSS.escape) ? CSS.escape(rowKey) : rowKey;
+            const sel = 'input[data-fc-cell][data-fc-row="' + esc + '"]';
+            const rowInputs = Array.from(document.querySelectorAll(sel));
+            const srcIdx = rowInputs.indexOf(srcInput);
+            if (srcIdx < 0) return;
+            let curIdx = srcIdx;
+            document.body.classList.add('fc-filling');
+            const paint = () => {
+                const lo = Math.min(srcIdx, curIdx), hi = Math.max(srcIdx, curIdx);
+                rowInputs.forEach((el, i) => el.classList.toggle('fc-fill-target', i >= lo && i <= hi));
+            };
+            const move = (e) => {
+                const under = document.elementFromPoint(e.clientX, e.clientY);
+                const td = under && under.closest('td');
+                const inp = td && td.querySelector(sel);
+                if (inp) { const i = rowInputs.indexOf(inp); if (i >= 0 && i !== curIdx) { curIdx = i; paint(); } }
+            };
+            const end = () => {
+                document.removeEventListener('mousemove', move, true);
+                document.removeEventListener('mouseup', end, true);
+                document.body.classList.remove('fc-filling');
+                rowInputs.forEach(el => el.classList.remove('fc-fill-target'));
+                const lo = Math.min(srcIdx, curIdx), hi = Math.max(srcIdx, curIdx);
+                const buckets = rowInputs.slice(lo, hi + 1).map(el => el.dataset.fcKey.split('::')[1]);
+                if (buckets.length && window.__fcWire) window.__fcWire.saveCells(rowKey, buckets, value);
+            };
+            paint();
+            document.addEventListener('mousemove', move, true);
+            document.addEventListener('mouseup', end, true);
+        };
+
         window.fcNavCell = (el, back) => {
             const table = el.closest('table');
             if (! table) { el.blur(); return; }

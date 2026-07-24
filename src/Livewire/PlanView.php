@@ -95,12 +95,20 @@ class PlanView extends Component
         $this->lastEdit = null;
     }
 
-    /** Settle: die zuletzt gespeicherte Zelle rückgängig machen (nur im Fenster). */
-    public function undoCell(string $rowKey, string $bucket): void
+    /** Settle: die zuletzt gespeicherte Aktion (Einzelzelle ODER Fill über mehrere) rückgängig
+     *  machen — nur im Fenster. Kaskadiert über alle Buckets der Aktion. */
+    public function undoLastEdit(): void
     {
         $this->cellError = null;
+        if (! $this->lastEdit) {
+            return;
+        }
         try {
-            (new PlanService())->undoRecent($this->plan(), $rowKey, $bucket, Auth::id());
+            $svc = new PlanService();
+            $plan = $this->plan();
+            foreach ($this->lastEdit['buckets'] ?? [] as $b) {
+                $svc->undoRecent($plan, $this->lastEdit['row'], $b, Auth::id());
+            }
             $this->lastEdit = null;
         } catch (\DomainException $e) {
             $this->cellError = $e->getMessage();
@@ -128,54 +136,97 @@ class PlanView extends Component
         $this->cellError = null;
         $this->editNonce++;
         $plan = $this->plan();
-        $service = new PlanService();
+        $meta = $this->rowMeta($plan, $rowKey);
 
         try {
-            $raw = trim($value);
-
-            // Faktor? (Einheit FAKTOR wird als % angezeigt → beim Speichern /100) + Label merken.
-            $isFactor = false;
-            $rowLabel = $rowKey;
-            foreach ($plan->resolvedRows() as $r) {
-                if ($r->key === $rowKey) {
-                    $isFactor = ($r->unit?->code === 'FAKTOR');
-                    $rowLabel = $r->label;
-                    break;
-                }
-            }
-
-            if ($raw === '') {
-                // Löschen — ebenfalls durchs Tor.
-                $gate = (new CellEditability())->check($plan, $rowKey, $bucket);
-                if (! $gate['editable']) {
-                    throw new \DomainException($gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.');
-                }
-                $service->clearCell($plan, $rowKey, $bucket, Auth::id());
-                $this->lastEdit = ['row' => $rowKey, 'bucket' => $bucket, 'label' => $rowLabel];
-
-                return;
-            }
-
-            // Aktuellen (eingegebenen) Wert holen — Basis für relative Operatoren (+, -, *, /, %).
-            $entry = ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucket)->first();
-            $currentStored = $entry ? (float) $entry->value : 0.0;
-            $currentDisplayed = $isFactor ? $currentStored * 100 : $currentStored; // Faktor rechnet in %-Anzeige
-
-            $resolved = $this->resolveInput($raw, $currentDisplayed);
-            if ($resolved === null) {
-                $this->cellError = 'Zahl oder Rechnung eingeben — z. B. 100 · +50 · +5% · *1,1 · /2 · -500';
-
-                return;
-            }
-            $store = round($isFactor ? $resolved / 100 : $resolved, 6);
-
-            $service->setCell($plan, $rowKey, $bucket, $store, Mode::Detail, Auth::id(), enforceGate: true);
-            $this->lastEdit = ['row' => $rowKey, 'bucket' => $bucket, 'label' => $rowLabel];
-        } catch (\DomainException $e) {
+            $this->applyCell($plan, new PlanService(), $rowKey, $bucket, trim($value), $meta['isFactor']);
+            $this->lastEdit = ['row' => $rowKey, 'buckets' => [$bucket], 'label' => $meta['label'], 'count' => 1];
+        } catch (\InvalidArgumentException|\DomainException $e) {
             $this->cellError = $e->getMessage();
         } catch (\Throwable $e) {
             $this->cellError = 'Konnte nicht speichern.';
         }
+    }
+
+    /**
+     * Fill: denselben Wert über mehrere Buckets einer Zeile schreiben — EIN Roundtrip, EIN Undo.
+     * Gesperrte Zellen im Bereich werden übersprungen; ungültige Eingabe bricht komplett ab.
+     *
+     * @param  list<string>  $buckets
+     */
+    public function saveCells(string $rowKey, array $buckets, string $value): void
+    {
+        $this->cellError = null;
+        $this->editNonce++;
+        $plan = $this->plan();
+        $meta = $this->rowMeta($plan, $rowKey);
+        $service = new PlanService();
+        $raw = trim($value);
+
+        $written = [];
+        $skipped = 0;
+        foreach ($buckets as $bucket) {
+            try {
+                $this->applyCell($plan, $service, $rowKey, (string) $bucket, $raw, $meta['isFactor']);
+                $written[] = (string) $bucket;
+            } catch (\InvalidArgumentException $e) {
+                $this->cellError = $e->getMessage(); // Wert ungültig → gilt für alle, abbrechen
+                return;
+            } catch (\Throwable $e) {
+                $skipped++; // gesperrte/fehlerhafte Zelle im Bereich → überspringen
+            }
+        }
+
+        if ($written === []) {
+            $this->cellError = $skipped > 0 ? 'Keine der Zellen ist eingebbar.' : 'Nichts zu füllen.';
+
+            return;
+        }
+
+        $this->lastEdit = ['row' => $rowKey, 'buckets' => $written, 'label' => $meta['label'], 'count' => count($written), 'skipped' => $skipped];
+    }
+
+    /** isFactor + Label einer Zeile (für Speichern/Anzeige). */
+    private function rowMeta(ForecastPlan $plan, string $rowKey): array
+    {
+        foreach ($plan->resolvedRows() as $r) {
+            if ($r->key === $rowKey) {
+                return ['isFactor' => $r->unit?->code === 'FAKTOR', 'label' => $r->label];
+            }
+        }
+
+        return ['isFactor' => false, 'label' => $rowKey];
+    }
+
+    /**
+     * Eine Zelle durchs Editier-Tor schreiben (leer = löschen). Inline-Operatoren relativ zum
+     * aktuellen Wert. Wirft \InvalidArgumentException (unlesbare Zahl) bzw. \DomainException (Tor).
+     */
+    private function applyCell(ForecastPlan $plan, PlanService $service, string $rowKey, string $bucket, string $raw, bool $isFactor): void
+    {
+        if ($raw === '') {
+            // Löschen — ebenfalls durchs Tor.
+            $gate = (new CellEditability())->check($plan, $rowKey, $bucket);
+            if (! $gate['editable']) {
+                throw new \DomainException($gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.');
+            }
+            $service->clearCell($plan, $rowKey, $bucket, Auth::id());
+
+            return;
+        }
+
+        // Aktuellen (eingegebenen) Wert holen — Basis für relative Operatoren (+, -, *, /, %).
+        $entry = ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucket)->first();
+        $currentStored = $entry ? (float) $entry->value : 0.0;
+        $currentDisplayed = $isFactor ? $currentStored * 100 : $currentStored; // Faktor rechnet in %-Anzeige
+
+        $resolved = $this->resolveInput($raw, $currentDisplayed);
+        if ($resolved === null) {
+            throw new \InvalidArgumentException('Zahl oder Rechnung eingeben — z. B. 100 · +50 · +5% · *1,1 · /2 · -500');
+        }
+        $store = round($isFactor ? $resolved / 100 : $resolved, 6);
+
+        $service->setCell($plan, $rowKey, $bucket, $store, Mode::Detail, Auth::id(), enforceGate: true);
     }
 
     /**

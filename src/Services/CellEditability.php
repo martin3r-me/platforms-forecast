@@ -48,6 +48,19 @@ final class CellEditability
         // Sperre: nur offene Perioden (auf/unter der Sperr-Ebene) sind eingebbar.
         $lock = (new PlanAnalyzer())->lockRule($plan);
         $status = LockService::status($bucketKey, $lock, now());
+
+        // Grob-Eingabe: Zelle gröber als die Erfassungs-Ebene ('mixed'). Bei FLUSS-Zeilen erlaubt —
+        // der Wert wird als Schätzung am groben Bucket gespeichert und verteilt sich per
+        // Verteilungsschlüssel nach unten (die ≈-Werte). Nicht-Fluss (Ø/Bestand) bleibt gesperrt,
+        // weil „per Gewicht aufteilen" für Raten/Bestände keinen Sinn ergibt.
+        if ($status['state'] === 'mixed') {
+            if (($row->config['time_agg'] ?? 'flow') === 'flow') {
+                return ['editable' => true, 'state' => 'spread', 'reason' => null];
+            }
+
+            return ['editable' => false, 'state' => 'locked', 'reason' => 'Gröber als die Sperr-Ebene — bitte auf der Erfassungs-Ebene eingeben.'];
+        }
+
         if ($status['state'] !== 'open') {
             return [
                 'editable' => false,
@@ -55,7 +68,6 @@ final class CellEditability
                 'reason' => match ($status['state']) {
                     'closed' => 'Periode ist geschlossen.',
                     'pending' => 'Periode ist noch nicht offen'.($status['days'] !== null ? " (öffnet in {$status['days']} T)" : '').'.',
-                    'mixed' => 'Gröber als die Sperr-Ebene — bitte auf der Erfassungs-Ebene eingeben.',
                     default => 'Periode nicht offen.',
                 },
             ];

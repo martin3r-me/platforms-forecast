@@ -270,6 +270,7 @@
                             <span class="inline-flex items-center gap-1" title="Berechnet: ergibt sich aus anderen Zeilen"><span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">ƒ</span> berechnet</span>
                             <span class="inline-flex items-center gap-1" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch"><span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600">↑</span> abgeleitet</span>
                             <span class="inline-flex items-center gap-1" title="Zu: Periode geschlossen — keine Eingabe">@svg('heroicon-o-lock-closed','w-3 h-3 text-[var(--ui-muted)]/60') zu</span>
+                            <span class="inline-flex items-center gap-1" title="Grob-Eingabe: gröber als die Erfassungs-Ebene — der Wert verteilt sich per Verteilungsschlüssel nach unten (nur Fluss-Zeilen)">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-amber-500/70') grob · verteilt</span>
                         </div>
                     </div>
 
@@ -337,6 +338,7 @@
                                 @php
                                     $isF = $rowInfo[$rowKey]['isFormula'] ?? false;
                                     $sec = $rowInfo[$rowKey]['section'] ?? null;
+                                    $rowIsFlow = ($rowInfo[$rowKey]['timeAgg'] ?? 'flow') === 'flow';
                                 @endphp
                                 @if($sec && $sec !== $lastSection)
                                     <tr>
@@ -400,21 +402,31 @@
                                             // beim Speichern ablehnt (z. B. Halbjahr gröber als die Sperr-Ebene → 'mixed').
                                             $colState = $colStatus[$bkt]['state'] ?? 'mixed';
                                             $colOpen = ($colState === 'open');
-                                            // Vier Feld-Zustände — Orientierung: sieht es aus wie ein Feld, kannst du tippen.
-                                            //   computed = ƒ (ergibt sich) · derived = Ordner/Detail (kommt hoch) · locked = zu · open = tippbar
+                                            // Grob-Eingabe: Spalte gröber als die Sperr-Ebene ('mixed') ist bei FLUSS-Zeilen tippbar —
+                                            // der Wert wird als Schätzung gespeichert und verteilt sich per Schlüssel nach unten
+                                            // (die ≈-Werte). Nicht-Fluss + closed/pending bleiben gesperrt.
+                                            $colSpread = ($colState === 'mixed' && $rowIsFlow);
+                                            // Feld-Zustände — Orientierung: sieht es aus wie ein Feld, kannst du tippen.
+                                            //   computed = ƒ · derived = Ordner/Detail · locked = zu · open = tippbar · spread = grob→verteilt
                                             $cellState = $isF ? 'computed'
                                                 : ((($isMaster && ! $isF) || ! empty($rowInfo[$rowKey]['refPlans'])) ? 'derived'
-                                                : ($colOpen ? 'open' : 'locked'));
+                                                : ($colOpen ? 'open' : ($colSpread ? 'spread' : 'locked')));
                                             $hasDetailMark = ($timeDetail[$rowKey][$bkt] ?? false) && $canZoom;
                                         @endphp
                                         <td class="relative text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top transition-colors
                                             {{ $cellState === 'open'
                                                 ? 'bg-[var(--ui-primary)]/[0.04] cursor-text group-hover/row:bg-[var(--ui-primary)]/[0.07] hover:!bg-[var(--ui-primary)]/[0.11] hover:shadow-[inset_0_0_0_1px_var(--ui-primary)]'
+                                                : ($cellState === 'spread'
+                                                    ? 'bg-amber-400/[0.05] cursor-text group-hover/row:bg-amber-400/[0.09] hover:!bg-amber-400/[0.14] hover:shadow-[inset_0_0_0_1px_rgb(251_191_36_/_0.6)]'
                                                 : ($cellState === 'locked'
                                                     ? 'opacity-50 group-hover/row:bg-[var(--ui-muted-5)]/50'
-                                                    : 'group-hover/row:bg-[var(--ui-muted-5)]/60') }}">
+                                                    : 'group-hover/row:bg-[var(--ui-muted-5)]/60')) }}">
                                             @if($hasDetailMark)
                                                 <span class="absolute top-1 left-1.5 text-[var(--ui-primary)]/45 group-hover/row:text-[var(--ui-primary)]/70 transition-colors" title="Enthält feineres Detail — Spalte anklicken zum Reinzoomen">
+                                                    @svg('heroicon-o-bars-arrow-down','w-3 h-3')
+                                                </span>
+                                            @elseif($cellState === 'spread')
+                                                <span class="absolute top-1 left-1.5 text-amber-500/60" title="Grob-Eingabe: gröber als die Erfassungs-Ebene — der Wert wird als Schätzung gespeichert und verteilt sich per Verteilungsschlüssel nach unten (≈-Werte).">
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
                                                 </span>
                                             @elseif($cellState === 'locked')
@@ -444,14 +456,15 @@
                                                 @endif
                                             @else
                                                 @php $cell = $row['cells'][$col['bucket']] ?? null; @endphp
-                                                @if($editMode && $cellState === 'open')
-                                                    {{-- Tippfeld: nur offene Zellen im Bearbeiten-Modus. Enter/Tab speichert (durchs Editier-Tor). --}}
+                                                @if($editMode && ($cellState === 'open' || $cellState === 'spread'))
+                                                    {{-- Tippfeld: offene ODER grobe (spread) Zellen im Bearbeiten-Modus. Enter/Tab speichert (durchs Editier-Tor). --}}
                                                     @php
                                                         $isFu = $rowInfo[$rowKey]['isFactor'] ?? false;
                                                         $cv = $cell['value'] ?? null;
                                                         $pf = ($cell && ($cell['entered'] ?? false))
                                                             ? rtrim(rtrim(number_format($isFu ? $cv * 100 : (float) $cv, 4, '.', ''), '0'), '.')
                                                             : '';
+                                                        $spread = $cellState === 'spread';
                                                     @endphp
                                                     <input type="text" inputmode="decimal" value="{{ $pf }}" data-fc-cell data-fc-key="{{ $rowKey }}::{{ $col['bucket'] }}"
                                                         wire:key="in-{{ $rowKey }}-{{ $col['bucket'] }}"
@@ -459,8 +472,8 @@
                                                         @keydown.tab.prevent="fcNavCell($el, $event.shiftKey)"
                                                         @keydown.escape="$el.value='{{ $pf }}'; $el.blur()"
                                                         @blur="$wire.saveCell('{{ $rowKey }}', '{{ $col['bucket'] }}', $el.value)"
-                                                        class="w-full text-right tabular-nums bg-[var(--ui-surface-solid)] border border-[var(--ui-primary)]/50 rounded px-1.5 py-1 text-sm text-[var(--ui-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-primary)]/40 focus:border-[var(--ui-primary)]"
-                                                        placeholder="Wert…" />
+                                                        class="w-full text-right tabular-nums bg-[var(--ui-surface-solid)] border rounded px-1.5 py-1 text-sm text-[var(--ui-secondary)] focus:outline-none focus:ring-2 {{ $spread ? 'border-amber-400/60 focus:ring-amber-400/40 focus:border-amber-400' : 'border-[var(--ui-primary)]/50 focus:ring-[var(--ui-primary)]/40 focus:border-[var(--ui-primary)]' }}"
+                                                        placeholder="{{ $spread ? 'verteilen…' : 'Wert…' }}" />
                                                 @elseif($cell && ($cell['entered'] || $cell['value'] != 0))
                                                     @php
                                                         $val = $cell['value'];

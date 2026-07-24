@@ -395,12 +395,16 @@
                                     @foreach($columns as $col)
                                         @php
                                             $bkt = $col['bucket'];
-                                            $colClosed = (($colStatus[$bkt]['state'] ?? '') === 'closed');
+                                            // Voller Sperr-Status der Spalte: NUR 'open' ist tippbar. 'closed'/'pending'/'mixed'
+                                            // sind gesperrt — sonst verspricht die Anzeige Editierbarkeit, die das Tor (CellEditability)
+                                            // beim Speichern ablehnt (z. B. Halbjahr gröber als die Sperr-Ebene → 'mixed').
+                                            $colState = $colStatus[$bkt]['state'] ?? 'mixed';
+                                            $colOpen = ($colState === 'open');
                                             // Vier Feld-Zustände — Orientierung: sieht es aus wie ein Feld, kannst du tippen.
                                             //   computed = ƒ (ergibt sich) · derived = Ordner/Detail (kommt hoch) · locked = zu · open = tippbar
                                             $cellState = $isF ? 'computed'
                                                 : ((($isMaster && ! $isF) || ! empty($rowInfo[$rowKey]['refPlans'])) ? 'derived'
-                                                : ($colClosed ? 'locked' : 'open'));
+                                                : ($colOpen ? 'open' : 'locked'));
                                             $hasDetailMark = ($timeDetail[$rowKey][$bkt] ?? false) && $canZoom;
                                         @endphp
                                         <td class="relative text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top transition-colors
@@ -414,7 +418,14 @@
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
                                                 </span>
                                             @elseif($cellState === 'locked')
-                                                <span class="absolute top-1 left-1.5 text-[var(--ui-muted)]/40" title="Periode geschlossen — hier ist keine Eingabe möglich">
+                                                @php
+                                                    $lockTitle = match ($colState) {
+                                                        'mixed' => 'Gröber als die Sperr-Ebene — bitte auf der Erfassungs-Ebene eingeben.',
+                                                        'pending' => 'Periode noch nicht offen'.(($colStatus[$bkt]['days'] ?? null) !== null ? ' — öffnet in '.$colStatus[$bkt]['days'].' T' : '').'.',
+                                                        default => 'Periode geschlossen — hier ist keine Eingabe möglich.',
+                                                    };
+                                                @endphp
+                                                <span class="absolute top-1 left-1.5 text-[var(--ui-muted)]/40" title="{{ $lockTitle }}">
                                                     @svg('heroicon-o-lock-closed','w-3 h-3')
                                                 </span>
                                             @endif

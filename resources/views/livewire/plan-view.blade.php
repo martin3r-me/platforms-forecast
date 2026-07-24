@@ -660,7 +660,7 @@
         // ── Auswahl-Modell (Excel-artiges Grid) ────────────────────────────────────────────
         // Zellen sind Anzeige (data-fc-r/c/row/col + data-fc-edit). EIN geteilter Editor-Input
         // wird bei Bedarf in die aktive Zelle gesetzt. Speichern läuft durch saveCell/saveCells.
-        // Listener/Objekt nur EINMAL anlegen (überlebt @script-Re-Runs via wire:navigate).
+        // Listener/Objekt nur EINMAL anlegen (ueberlebt Script-Re-Runs via wire:navigate).
         if (! window.fcGrid) {
             const G = window.fcGrid = {
                 active: null, anchor: null, editing: false, dragging: false, editor: null,

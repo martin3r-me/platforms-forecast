@@ -416,6 +416,13 @@
                                                 : ((($isMaster && ! $isF) || ! empty($rowInfo[$rowKey]['refPlans'])) ? 'derived'
                                                 : ($colOpen ? 'open' : ($colSpread ? 'spread' : 'locked')));
                                             $hasDetailMark = ($timeDetail[$rowKey][$bkt] ?? false) && $canZoom;
+                                            // Grobe Rate/Bestand-Zelle MIT feinerem Detail: die grobe Schätzung würde vom Detail
+                                            // dominiert (nonAdditive → Detail gewinnt), eine Eingabe hier liefe ins Leere. Also nicht
+                                            // editierbar — der „hat feineres Detail"-Marker weist aufs Reinzoomen. (Fluss bleibt: dort
+                                            // ist die grobe Schätzung als Envelope sinnvoll.)
+                                            if ($cellState === 'spread' && $rowReplicates && $hasDetailMark) {
+                                                $cellState = 'derived';
+                                            }
                                             // Grid-Editor (Auswahl-Modell): editierbar = offen/spread im Bearbeiten-Modus.
                                             $cellEditable = $editMode && ($cellState === 'open' || $cellState === 'spread');
                                             $isFu = $rowInfo[$rowKey]['isFactor'] ?? false;

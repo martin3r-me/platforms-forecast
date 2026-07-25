@@ -11,10 +11,10 @@
         ? ($isCurrent ? 'heroicon-o-folder-open' : 'heroicon-o-folder')
         : 'heroicon-o-document-chart-bar';
     $cls = $isCurrent
-        ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-semibold ring-1 ring-[var(--ui-primary)]/20'
+        ? 'bg-[color:var(--nx-accent-soft)] text-[color:var(--nx-text)] font-semibold'
         : ($onPath
-            ? 'text-[var(--ui-secondary)] font-semibold hover:bg-[var(--ui-muted-10)]'
-            : 'text-[var(--ui-secondary)] hover:text-[var(--ui-primary)] hover:bg-[var(--ui-muted-10)]');
+            ? 'text-[color:var(--nx-text)] font-semibold hover:bg-[color:var(--nx-hover)]'
+            : 'text-[color:var(--nx-muted)] hover:text-[color:var(--nx-text)] hover:bg-[color:var(--nx-hover)]');
 @endphp
 
 <a href="{{ route('forecast.plans.show', ['uuid' => $node->uuid]) }}" wire:navigate
@@ -27,7 +27,7 @@
         <span class="shrink-0 text-amber-500" title="hat ein Feld mit eigener Planung dahinter (Drill-down)">@svg('heroicon-o-magnifying-glass-plus','w-3 h-3')</span>
     @endif
     @if($kids->count())
-        <span class="ml-auto text-[9px] font-medium text-[var(--ui-muted)]/60 shrink-0">{{ $kids->count() }}</span>
+        <span class="ml-auto text-[9px] font-medium text-[color:var(--nx-faint)] shrink-0">{{ $kids->count() }}</span>
     @endif
 </a>
 

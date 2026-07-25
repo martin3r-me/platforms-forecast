@@ -13,8 +13,8 @@
     <x-ui-page-container>
         <div class="space-y-6 max-w-4xl">
             <div>
-                <h1 class="text-lg font-semibold tracking-tight text-[var(--ui-secondary)]">Planungen</h1>
-                <p class="text-xs text-[var(--ui-muted)] mt-1">
+                <h1 class="text-lg font-semibold tracking-tight text-[color:var(--nx-text)]">Planungen</h1>
+                <p class="text-xs text-[color:var(--nx-muted)] mt-1">
                     Wie Ordner: <span class="text-indigo-600 font-medium">Ordner</span> bündeln Planungen ·
                     <span class="text-emerald-600 font-medium">Blätter</span> erfassen Zahlen ·
                     <span class="text-amber-600 font-medium">Drill-down</span> = ein Feld mit eigener Planung dahinter.
@@ -22,25 +22,24 @@
             </div>
 
             @if($total === 0)
-                <div class="rounded-xl border border-dashed border-[var(--ui-border)] p-10 text-center">
-                    <div class="mx-auto w-12 h-12 rounded-xl bg-[var(--ui-primary)]/10 flex items-center justify-center mb-3">
-                        @svg('heroicon-o-presentation-chart-line','w-6 h-6 text-[var(--ui-primary)]')
-                    </div>
-                    <div class="text-sm text-[var(--ui-secondary)] font-medium">Noch keine Planungen</div>
-                    <div class="text-xs text-[var(--ui-muted)] mt-1">Lege eine Planung per MCP an (forecast.plan.POST).</div>
-                </div>
+                <x-nx-card>
+                    <x-nx-empty icon="heroicon-o-presentation-chart-line">
+                        <div class="text-[color:var(--nx-text)] font-medium">Noch keine Planungen</div>
+                        <div class="mt-1">Lege eine Planung per MCP an (forecast.plan.POST).</div>
+                    </x-nx-empty>
+                </x-nx-card>
             @endif
 
             {{-- ═══ Master (Konsolidierungen) — mit ihren Instanzen aufgeklappt ═══ --}}
             @if($masters->isNotEmpty())
                 <section>
-                    <h2 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-muted)] mb-2.5">
+                    <h2 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--nx-muted)] mb-2.5">
                         @svg('heroicon-o-folder','w-3.5 h-3.5 text-indigo-500') Ordner
-                        <span class="font-normal normal-case tracking-normal text-[var(--ui-muted)]/70">— bündeln untergeordnete Planungen</span>
+                        <span class="font-normal normal-case tracking-normal text-[color:var(--nx-faint)]">— bündeln untergeordnete Planungen</span>
                     </h2>
                     <div class="space-y-3">
                         @foreach($masters as $master)
-                            <div class="rounded-xl border border-[var(--ui-border)]/60 bg-[var(--ui-surface)] p-2">
+                            <div class="rounded-lg border border-[color:var(--nx-line)] bg-[color:var(--nx-surface)] p-2">
                                 @include('forecast::livewire.partials.nav-plan-node', [
                                     'node' => $master,
                                     'depth' => 0,
@@ -60,50 +59,48 @@
             {{-- ═══ Einzelpläne ═══ --}}
             @if($singles->isNotEmpty())
                 <section>
-                    <h2 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-muted)] mb-2.5">
+                    <h2 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--nx-muted)] mb-2.5">
                         @svg('heroicon-o-document-chart-bar','w-3.5 h-3.5 text-emerald-500') Einzelne Blätter
-                        <span class="font-normal normal-case tracking-normal text-[var(--ui-muted)]/70">— eigenständig, erfassen Zahlen</span>
+                        <span class="font-normal normal-case tracking-normal text-[color:var(--nx-faint)]">— eigenständig, erfassen Zahlen</span>
                     </h2>
-                    <div class="overflow-hidden rounded-xl border border-[var(--ui-border)]/60 divide-y divide-[var(--ui-border)]/40">
-                        @foreach($singles as $plan)
-                            <a href="{{ route('forecast.plans.show', ['uuid' => $plan->uuid]) }}" wire:navigate
-                               class="flex items-center justify-between gap-4 px-4 py-3 hover:bg-[var(--ui-muted-5)] transition-colors">
-                                <div class="min-w-0 flex items-center gap-2">
-                                    @svg('heroicon-o-document-chart-bar','w-4 h-4 text-emerald-500 shrink-0')
-                                    <div class="min-w-0">
-                                        <div class="font-medium text-[var(--ui-secondary)] truncate">{{ $plan->name }}</div>
-                                        <div class="text-xs text-[var(--ui-muted)]">{{ $plan->planType?->name }}</div>
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-3 flex-shrink-0">
-                                    <span class="text-xs text-[var(--ui-muted)]">v{{ $plan->current_version }}</span>
-                                    @svg('heroicon-o-chevron-right','w-4 h-4 text-[var(--ui-muted)]')
-                                </div>
-                            </a>
-                        @endforeach
-                    </div>
+                    <x-nx-card flush>
+                        <div class="divide-y divide-[color:var(--nx-line)]">
+                            @foreach($singles as $plan)
+                                <x-nx-list-item
+                                    :href="route('forecast.plans.show', ['uuid' => $plan->uuid])"
+                                    :title="$plan->name"
+                                    :subtitle="$plan->planType?->name"
+                                    :meta="'v'.$plan->current_version">
+                                    <x-slot name="leading">
+                                        @svg('heroicon-o-document-chart-bar','w-4 h-4 text-emerald-500')
+                                    </x-slot>
+                                </x-nx-list-item>
+                            @endforeach
+                        </div>
+                    </x-nx-card>
                 </section>
             @endif
 
             {{-- ═══ Detailpläne (Bausteine — normal per Drill-down erreicht) ═══ --}}
             @if($details->isNotEmpty())
                 <section>
-                    <h2 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-muted)] mb-2.5">
+                    <h2 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--nx-muted)] mb-2.5">
                         @svg('heroicon-o-magnifying-glass-plus','w-3.5 h-3.5 text-amber-500') Detailpläne
-                        <span class="font-normal normal-case tracking-normal text-[var(--ui-muted)]/70">— hängen an einzelnen Feldern (Drill-down), nicht am Ordnerbaum</span>
+                        <span class="font-normal normal-case tracking-normal text-[color:var(--nx-faint)]">— hängen an einzelnen Feldern (Drill-down), nicht am Ordnerbaum</span>
                     </h2>
-                    <div class="overflow-hidden rounded-xl border border-[var(--ui-border)]/50 divide-y divide-[var(--ui-border)]/40 opacity-90">
-                        @foreach($details as $plan)
-                            <a href="{{ route('forecast.plans.show', ['uuid' => $plan->uuid]) }}" wire:navigate
-                               class="flex items-center justify-between gap-4 px-4 py-2.5 hover:bg-[var(--ui-muted-5)] transition-colors">
-                                <div class="min-w-0 flex items-center gap-2">
-                                    @svg('heroicon-o-magnifying-glass-plus','w-4 h-4 text-amber-500 shrink-0')
-                                    <span class="text-sm text-[var(--ui-secondary)] truncate">{{ $plan->name }}</span>
-                                </div>
-                                @svg('heroicon-o-chevron-right','w-4 h-4 text-[var(--ui-muted)]')
-                            </a>
-                        @endforeach
-                    </div>
+                    <x-nx-card flush class="opacity-90">
+                        <div class="divide-y divide-[color:var(--nx-line)]">
+                            @foreach($details as $plan)
+                                <x-nx-list-item
+                                    :href="route('forecast.plans.show', ['uuid' => $plan->uuid])"
+                                    :title="$plan->name">
+                                    <x-slot name="leading">
+                                        @svg('heroicon-o-magnifying-glass-plus','w-4 h-4 text-amber-500')
+                                    </x-slot>
+                                </x-nx-list-item>
+                            @endforeach
+                        </div>
+                    </x-nx-card>
                 </section>
             @endif
         </div>

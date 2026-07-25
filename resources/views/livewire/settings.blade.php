@@ -29,23 +29,23 @@
             <div class="flex flex-wrap items-center gap-1.5">
                 @foreach($tabs as $key => $tab)
                     <a href="{{ route('forecast.settings', ['section' => $key === 'overview' ? null : $key]) }}" wire:navigate
-                       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors
+                       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors
                            {{ $section === $key
-                               ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-semibold ring-1 ring-[var(--ui-primary)]/20'
-                               : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)] hover:text-[var(--ui-secondary)]' }}">
+                               ? 'bg-[color:var(--nx-accent-soft)] text-[color:var(--nx-text)] font-semibold'
+                               : 'text-[color:var(--nx-muted)] hover:bg-[color:var(--nx-hover)] hover:text-[color:var(--nx-text)]' }}">
                         @svg('heroicon-o-'.$tab[1], 'w-4 h-4')
                         {{ $tab[0] }}
                     </a>
                 @endforeach
             </div>
 
-            <div class="text-xs text-[var(--ui-muted)] inline-flex items-center gap-1">
+            <div class="text-xs text-[color:var(--nx-faint)] inline-flex items-center gap-1">
                 @svg('heroicon-o-eye','w-3.5 h-3.5') Nur Ansicht — Bearbeiten folgt später
             </div>
 
             {{-- ═══ Übersicht ═══ --}}
             @if($section === 'overview')
-                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <x-nx-stat-grid :cols="4">
                     @foreach([
                         ['units','Einheiten','scale', $counts['units'] ?? 0, 'mit Umrechnung je Dimension'],
                         ['lock-policies','Sperr-Regeln','lock-closed', $counts['policies'] ?? 0, 'Vorlauf/Nachlauf, Kaskade'],
@@ -53,158 +53,157 @@
                         ['plan-types','Plan-Typen','rectangle-stack', $counts['types'] ?? 0, 'Zeilen-Vorlagen'],
                         ['vocabulary','Vokabular','language', null, 'System-Listen (Arten, Aggregationen …)'],
                     ] as $card)
-                        <a href="{{ route('forecast.settings', ['section' => $card[0]]) }}" wire:navigate
-                           class="group relative overflow-hidden rounded-2xl border border-[var(--ui-border)]/60 bg-[var(--ui-surface)] p-4 hover:-translate-y-0.5 hover:shadow-md transition-all">
-                            <div class="flex items-center justify-between">
-                                <div class="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--ui-primary)]/10">
-                                    @svg('heroicon-o-'.$card[2], 'w-4.5 h-4.5 text-[var(--ui-primary)]')
-                                </div>
-                                @if($card[3] !== null)
-                                    <span class="text-2xl font-semibold tabular-nums text-[var(--ui-secondary)]">{{ $card[3] }}</span>
-                                @endif
-                            </div>
-                            <div class="mt-3 font-medium text-[var(--ui-secondary)]">{{ $card[1] }}</div>
-                            <div class="text-xs text-[var(--ui-muted)]">{{ $card[4] }}</div>
-                        </a>
+                        <x-nx-stat
+                            :href="route('forecast.settings', ['section' => $card[0]])"
+                            :label="$card[1]"
+                            :value="$card[3] !== null ? $card[3] : '—'"
+                            :hint="$card[4]"
+                            :icon="'heroicon-o-'.$card[2]"
+                            wire:navigate />
                     @endforeach
-                </div>
+                </x-nx-stat-grid>
             @endif
 
             {{-- ═══ Einheiten ═══ --}}
             @if($section === 'units')
-                <x-ui-panel title="Einheiten" subtitle="Umrechnung innerhalb einer Dimension über den Faktor zur Basis">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full text-sm">
-                            <thead>
-                                <tr class="text-left text-[11px] uppercase tracking-wider text-[var(--ui-muted)] border-b border-[var(--ui-border)]/50">
-                                    <th class="py-2 pr-4">Code</th><th class="py-2 pr-4">Name</th><th class="py-2 pr-4">Symbol</th>
-                                    <th class="py-2 pr-4">Dimension</th><th class="py-2 pr-4 text-right">Faktor → Basis</th>
-                                    <th class="py-2 pr-4">Basis</th><th class="py-2 pr-4">Geltung</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                <x-nx-section title="Einheiten" description="Umrechnung innerhalb einer Dimension über den Faktor zur Basis">
+                    <x-nx-card flush>
+                        <x-nx-table>
+                            <x-nx-table-header>
+                                <x-nx-table-header-cell>Code</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Name</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Symbol</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Dimension</x-nx-table-header-cell>
+                                <x-nx-table-header-cell align="right">Faktor → Basis</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Basis</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Geltung</x-nx-table-header-cell>
+                            </x-nx-table-header>
+                            <x-nx-table-body>
                                 @foreach($units as $u)
-                                    <tr class="border-b border-[var(--ui-border)]/30">
-                                        <td class="py-2 pr-4 font-mono text-xs">{{ $u->code }}</td>
-                                        <td class="py-2 pr-4 text-[var(--ui-secondary)]">{{ $u->name }}</td>
-                                        <td class="py-2 pr-4">{{ $u->symbol }}</td>
-                                        <td class="py-2 pr-4"><span class="px-1.5 py-0.5 rounded bg-[var(--ui-muted-10)] text-xs">{{ $u->dimension }}</span></td>
-                                        <td class="py-2 pr-4 text-right tabular-nums">{{ rtrim(rtrim(number_format($u->factor_to_base, 6, ',', '.'), '0'), ',') }}</td>
-                                        <td class="py-2 pr-4">@if($u->is_base)<span class="text-emerald-600">✓</span>@endif</td>
-                                        <td class="py-2 pr-4 text-xs text-[var(--ui-muted)]">{{ $u->team_id ? 'Team' : 'global' }}</td>
-                                    </tr>
+                                    <x-nx-table-row>
+                                        <x-nx-table-cell><span class="font-mono text-xs">{{ $u->code }}</span></x-nx-table-cell>
+                                        <x-nx-table-cell>{{ $u->name }}</x-nx-table-cell>
+                                        <x-nx-table-cell>{{ $u->symbol }}</x-nx-table-cell>
+                                        <x-nx-table-cell><x-nx-badge>{{ $u->dimension }}</x-nx-badge></x-nx-table-cell>
+                                        <x-nx-table-cell align="right"><span class="tabular-nums">{{ rtrim(rtrim(number_format($u->factor_to_base, 6, ',', '.'), '0'), ',') }}</span></x-nx-table-cell>
+                                        <x-nx-table-cell>@if($u->is_base)<span class="text-[color:var(--nx-success)]">✓</span>@endif</x-nx-table-cell>
+                                        <x-nx-table-cell><span class="text-xs text-[color:var(--nx-faint)]">{{ $u->team_id ? 'Team' : 'global' }}</span></x-nx-table-cell>
+                                    </x-nx-table-row>
                                 @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                </x-ui-panel>
+                            </x-nx-table-body>
+                        </x-nx-table>
+                    </x-nx-card>
+                </x-nx-section>
             @endif
 
             {{-- ═══ Sperr-Regeln ═══ --}}
             @if($section === 'lock-policies')
-                <x-ui-panel title="Sperr-Regeln" subtitle="Vergangenheit zu · Vorlauf öffnet vor Start · Nachlauf hält nach Ende offen · Entscheidung auf Perioden-Ebene, feinere erben">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full text-sm">
-                            <thead>
-                                <tr class="text-left text-[11px] uppercase tracking-wider text-[var(--ui-muted)] border-b border-[var(--ui-border)]/50">
-                                    <th class="py-2 pr-4">Name</th><th class="py-2 pr-4">Perioden-Ebene</th>
-                                    <th class="py-2 pr-4 text-right">Vorlauf (T)</th><th class="py-2 pr-4 text-right">Nachlauf (T)</th>
-                                    <th class="py-2 pr-4">Vergangenheit</th><th class="py-2 pr-4">Default</th><th class="py-2 pr-4">Geltung</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                <x-nx-section title="Sperr-Regeln" description="Vergangenheit zu · Vorlauf öffnet vor Start · Nachlauf hält nach Ende offen · Entscheidung auf Perioden-Ebene, feinere erben">
+                    <x-nx-card flush>
+                        <x-nx-table>
+                            <x-nx-table-header>
+                                <x-nx-table-header-cell>Name</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Perioden-Ebene</x-nx-table-header-cell>
+                                <x-nx-table-header-cell align="right">Vorlauf (T)</x-nx-table-header-cell>
+                                <x-nx-table-header-cell align="right">Nachlauf (T)</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Vergangenheit</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Default</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Geltung</x-nx-table-header-cell>
+                            </x-nx-table-header>
+                            <x-nx-table-body>
                                 @foreach($policies as $p)
-                                    <tr class="border-b border-[var(--ui-border)]/30">
-                                        <td class="py-2 pr-4 text-[var(--ui-secondary)]">{{ $p->name }}</td>
-                                        <td class="py-2 pr-4">{{ $p->period_level }}</td>
-                                        <td class="py-2 pr-4 text-right tabular-nums">{{ $p->lead_days }}</td>
-                                        <td class="py-2 pr-4 text-right tabular-nums">{{ $p->grace_days }}</td>
-                                        <td class="py-2 pr-4 text-xs">{{ $p->freeze_past ? 'gesperrt' : 'offen' }}</td>
-                                        <td class="py-2 pr-4">@if($p->is_default)<span class="text-emerald-600">✓</span>@endif</td>
-                                        <td class="py-2 pr-4 text-xs text-[var(--ui-muted)]">{{ $p->team_id ? 'Team' : 'global' }}</td>
-                                    </tr>
+                                    <x-nx-table-row>
+                                        <x-nx-table-cell>{{ $p->name }}</x-nx-table-cell>
+                                        <x-nx-table-cell>{{ $p->period_level }}</x-nx-table-cell>
+                                        <x-nx-table-cell align="right"><span class="tabular-nums">{{ $p->lead_days }}</span></x-nx-table-cell>
+                                        <x-nx-table-cell align="right"><span class="tabular-nums">{{ $p->grace_days }}</span></x-nx-table-cell>
+                                        <x-nx-table-cell><span class="text-xs">{{ $p->freeze_past ? 'gesperrt' : 'offen' }}</span></x-nx-table-cell>
+                                        <x-nx-table-cell>@if($p->is_default)<span class="text-[color:var(--nx-success)]">✓</span>@endif</x-nx-table-cell>
+                                        <x-nx-table-cell><span class="text-xs text-[color:var(--nx-faint)]">{{ $p->team_id ? 'Team' : 'global' }}</span></x-nx-table-cell>
+                                    </x-nx-table-row>
                                 @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                </x-ui-panel>
+                            </x-nx-table-body>
+                        </x-nx-table>
+                    </x-nx-card>
+                </x-nx-section>
             @endif
 
             {{-- ═══ Verteilung ═══ --}}
             @if($section === 'distribution')
-                <x-ui-panel title="Verteilungsschlüssel" subtitle="Wie ein gröberer Wert / der Rest nach unten auf feinere, leere Zellen fällt — gleichmäßig oder saisonal (Monatsgewichte)">
+                <x-nx-section title="Verteilungsschlüssel" description="Wie ein gröberer Wert / der Rest nach unten auf feinere, leere Zellen fällt — gleichmäßig oder saisonal (Monatsgewichte)">
                     @php $monate = ['J','F','M','A','M','J','J','A','S','O','N','D']; @endphp
                     <div class="space-y-3">
                         @foreach($distributions as $d)
-                            <div class="rounded-xl border border-[var(--ui-border)]/50 p-3">
+                            <x-nx-card>
                                 <div class="flex items-center justify-between gap-3">
                                     <div class="flex items-center gap-2">
-                                        @svg($d->key === 'seasonal' ? 'heroicon-o-chart-bar' : 'heroicon-o-minus', 'w-4 h-4 text-[var(--ui-primary)]')
-                                        <span class="font-medium text-[var(--ui-secondary)]">{{ $d->name }}</span>
-                                        @if($d->is_default)<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 font-medium">Default</span>@endif
+                                        @svg($d->key === 'seasonal' ? 'heroicon-o-chart-bar' : 'heroicon-o-minus', 'w-4 h-4 text-[color:var(--nx-muted)]')
+                                        <span class="font-medium text-[color:var(--nx-text)]">{{ $d->name }}</span>
+                                        @if($d->is_default)<x-nx-badge variant="success">Default</x-nx-badge>@endif
                                     </div>
-                                    <span class="text-xs text-[var(--ui-muted)]">{{ $d->key === 'seasonal' ? 'saisonal' : 'gleichmäßig' }} · {{ $d->team_id ? 'Team' : 'global' }}</span>
+                                    <span class="text-xs text-[color:var(--nx-faint)]">{{ $d->key === 'seasonal' ? 'saisonal' : 'gleichmäßig' }} · {{ $d->team_id ? 'Team' : 'global' }}</span>
                                 </div>
                                 @if($d->key === 'seasonal' && is_array($d->weights) && count($d->weights) === 12)
                                     @php $maxW = max($d->weights) ?: 1; @endphp
                                     <div class="mt-3 flex items-end gap-1">
                                         @foreach($d->weights as $i => $w)
                                             <div class="flex-1 flex flex-col items-center gap-1">
-                                                <span class="text-[9px] text-[var(--ui-muted)]/70 tabular-nums">{{ number_format($w, 1, ',', '.') }}</span>
-                                                <div class="w-full rounded-t bg-[var(--ui-primary)]/60" style="height: {{ max(3, (int) round($w / $maxW * 56)) }}px" title="{{ $monate[$i] }}: Gewicht {{ $w }}"></div>
-                                                <span class="text-[9px] text-[var(--ui-muted)]">{{ $monate[$i] }}</span>
+                                                <span class="text-[9px] text-[color:var(--nx-faint)] tabular-nums">{{ number_format($w, 1, ',', '.') }}</span>
+                                                <div class="w-full rounded-t bg-[color:var(--nx-accent)]" style="height: {{ max(3, (int) round($w / $maxW * 56)) }}px" title="{{ $monate[$i] }}: Gewicht {{ $w }}"></div>
+                                                <span class="text-[9px] text-[color:var(--nx-faint)]">{{ $monate[$i] }}</span>
                                             </div>
                                         @endforeach
                                     </div>
                                 @else
-                                    <div class="mt-2 text-xs text-[var(--ui-muted)]">Gleiche Gewichte auf alle Perioden.</div>
+                                    <div class="mt-2 text-xs text-[color:var(--nx-faint)]">Gleiche Gewichte auf alle Perioden.</div>
                                 @endif
-                            </div>
+                            </x-nx-card>
                         @endforeach
                     </div>
-                </x-ui-panel>
+                </x-nx-section>
             @endif
 
             {{-- ═══ Plan-Typen ═══ --}}
             @if($section === 'plan-types')
-                <x-ui-panel title="Plan-Typen" subtitle="Vorlagen: definieren die Zeilen-Struktur">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full text-sm">
-                            <thead>
-                                <tr class="text-left text-[11px] uppercase tracking-wider text-[var(--ui-muted)] border-b border-[var(--ui-border)]/50">
-                                    <th class="py-2 pr-4">Name</th><th class="py-2 pr-4">Key</th>
-                                    <th class="py-2 pr-4 text-right">Zeilen</th><th class="py-2 pr-4 text-right">Pläne</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                <x-nx-section title="Plan-Typen" description="Vorlagen: definieren die Zeilen-Struktur">
+                    <x-nx-card flush>
+                        <x-nx-table>
+                            <x-nx-table-header>
+                                <x-nx-table-header-cell>Name</x-nx-table-header-cell>
+                                <x-nx-table-header-cell>Key</x-nx-table-header-cell>
+                                <x-nx-table-header-cell align="right">Zeilen</x-nx-table-header-cell>
+                                <x-nx-table-header-cell align="right">Pläne</x-nx-table-header-cell>
+                            </x-nx-table-header>
+                            <x-nx-table-body>
                                 @foreach($types as $t)
-                                    <tr class="border-b border-[var(--ui-border)]/30">
-                                        <td class="py-2 pr-4 text-[var(--ui-secondary)]">{{ $t->name }}</td>
-                                        <td class="py-2 pr-4 font-mono text-xs text-[var(--ui-muted)]">{{ $t->key }}</td>
-                                        <td class="py-2 pr-4 text-right tabular-nums">{{ $t->rows_count }}</td>
-                                        <td class="py-2 pr-4 text-right tabular-nums">{{ $t->plans_count }}</td>
-                                    </tr>
+                                    <x-nx-table-row>
+                                        <x-nx-table-cell>{{ $t->name }}</x-nx-table-cell>
+                                        <x-nx-table-cell><span class="font-mono text-xs text-[color:var(--nx-muted)]">{{ $t->key }}</span></x-nx-table-cell>
+                                        <x-nx-table-cell align="right"><span class="tabular-nums">{{ $t->rows_count }}</span></x-nx-table-cell>
+                                        <x-nx-table-cell align="right"><span class="tabular-nums">{{ $t->plans_count }}</span></x-nx-table-cell>
+                                    </x-nx-table-row>
                                 @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                </x-ui-panel>
+                            </x-nx-table-body>
+                        </x-nx-table>
+                    </x-nx-card>
+                </x-nx-section>
             @endif
 
             {{-- ═══ Vokabular ═══ --}}
             @if($section === 'vocabulary')
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     @foreach($vocab as $group => $items)
-                        <x-ui-panel :title="$group">
+                        <x-nx-card>
+                            <div class="text-sm font-semibold text-[color:var(--nx-text)] mb-2">{{ $group }}</div>
                             <div class="space-y-1.5">
                                 @foreach($items as $item)
                                     <div class="flex items-center gap-2 text-sm">
-                                        <span class="font-mono text-xs px-1.5 py-0.5 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">{{ $item['code'] }}</span>
-                                        <span class="text-[var(--ui-secondary)]">{{ $item['label'] }}</span>
+                                        <span class="font-mono text-xs px-1.5 py-0.5 rounded bg-[color:var(--nx-accent-soft)] text-[color:var(--nx-muted)]">{{ $item['code'] }}</span>
+                                        <span class="text-[color:var(--nx-text)]">{{ $item['label'] }}</span>
                                     </div>
                                 @endforeach
                             </div>
-                        </x-ui-panel>
+                        </x-nx-card>
                     @endforeach
                 </div>
             @endif

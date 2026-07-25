@@ -16,22 +16,22 @@
 
 <div>
     {{-- Modul Header --}}
-    <div x-show="!collapsed" class="p-3 text-sm italic text-[var(--ui-secondary)] uppercase border-b border-[var(--ui-border)] mb-2">
+    <div x-show="!collapsed" class="p-3 text-sm italic text-[color:var(--nx-text)] uppercase border-b border-[color:var(--nx-line)] mb-2">
         Forecast
     </div>
     
     {{-- Abschnitt: Allgemein --}}
     <x-ui-sidebar-list label="Allgemein">
         <x-ui-sidebar-item :href="route('forecast.dashboard')">
-            @svg('heroicon-o-home', 'w-4 h-4 text-[var(--ui-secondary)]')
+            @svg('heroicon-o-home', 'w-4 h-4 text-[color:var(--nx-muted)]')
             <span class="ml-2 text-sm">Dashboard</span>
         </x-ui-sidebar-item>
         <x-ui-sidebar-item :href="route('forecast.plans.index')">
-            @svg('heroicon-o-table-cells', 'w-4 h-4 text-[var(--ui-secondary)]')
+            @svg('heroicon-o-table-cells', 'w-4 h-4 text-[color:var(--nx-muted)]')
             <span class="ml-2 text-sm">Planungen</span>
         </x-ui-sidebar-item>
         <x-ui-sidebar-item :href="route('forecast.settings')">
-            @svg('heroicon-o-cog-6-tooth', 'w-4 h-4 text-[var(--ui-secondary)]')
+            @svg('heroicon-o-cog-6-tooth', 'w-4 h-4 text-[color:var(--nx-muted)]')
             <span class="ml-2 text-sm">Einstellungen</span>
         </x-ui-sidebar-item>
     </x-ui-sidebar-list>
@@ -53,7 +53,7 @@
         @endphp
         @if($roots->isEmpty())
             <x-ui-sidebar-list label="Planungen">
-                <div class="px-3 py-2 text-xs italic text-[var(--ui-muted)]">Noch keine Planungen</div>
+                <div class="px-3 py-2 text-xs italic text-[color:var(--nx-faint)]">Noch keine Planungen</div>
             </x-ui-sidebar-list>
         @endif
         @foreach($groups as [$label, $items])
@@ -72,12 +72,12 @@
     </div>
 
     {{-- Collapsed: Icons-only --}}
-    <div x-show="collapsed" class="px-2 py-2 border-b border-[var(--ui-border)]">
+    <div x-show="collapsed" class="px-2 py-2 border-b border-[color:var(--nx-line)]">
         <div class="flex flex-col gap-2">
-            <a href="{{ route('forecast.dashboard') }}" wire:navigate class="flex items-center justify-center p-2 rounded-md text-[var(--ui-secondary)] hover:bg-[var(--ui-muted-5)]">
+            <a href="{{ route('forecast.dashboard') }}" wire:navigate class="flex items-center justify-center p-2 rounded-md text-[color:var(--nx-muted)] hover:bg-[color:var(--nx-hover)]">
                 @svg('heroicon-o-home', 'w-5 h-5')
             </a>
-            <a href="{{ route('forecast.plans.index') }}" wire:navigate class="flex items-center justify-center p-2 rounded-md text-[var(--ui-secondary)] hover:bg-[var(--ui-muted-5)]">
+            <a href="{{ route('forecast.plans.index') }}" wire:navigate class="flex items-center justify-center p-2 rounded-md text-[color:var(--nx-muted)] hover:bg-[color:var(--nx-hover)]">
                 @svg('heroicon-o-table-cells', 'w-5 h-5')
             </a>
         </div>

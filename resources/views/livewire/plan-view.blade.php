@@ -273,7 +273,7 @@
                 </div>
 
                 <div class="overflow-auto max-h-[72vh]">
-                    <table class="min-w-full border-separate border-spacing-0 text-sm">
+                    <table class="w-max border-separate border-spacing-0 text-sm">
                         <thead>
                             <tr>
                                 <th class="sticky left-0 top-0 z-30 bg-[var(--ui-surface-solid)] text-left px-4 py-2.5 font-medium text-[11px] uppercase tracking-wider text-[var(--ui-muted)] border-b border-[var(--ui-border)]/60 min-w-[200px]">Zeile</th>
@@ -345,10 +345,7 @@
                                                     @svg('heroicon-o-magnifying-glass-plus','w-3 h-3') Detailplan
                                                 </a>
                                             @endif
-                                        </div>
-                                        <div class="text-[10px] uppercase tracking-wide text-[var(--ui-muted)]/70">
-                                            @if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else{{ $rowInfo[$rowKey]['direction'] === 'income' ? 'Ertrag +' : ($rowInfo[$rowKey]['direction'] === 'expense' ? 'Aufwand −' : 'Messgröße') }}@endif
-                                            @if($unitOf($rowKey)) · {{ $unitOf($rowKey) }}@endif
+                                            <span class="text-[10px] text-[var(--ui-muted)]/55 whitespace-nowrap ml-0.5">@if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else{{ $rowInfo[$rowKey]['direction'] === 'income' ? 'Ertrag +' : ($rowInfo[$rowKey]['direction'] === 'expense' ? 'Aufwand −' : 'Messgröße') }}@endif @if($unitOf($rowKey))· {{ $unitOf($rowKey) }}@endif</span>
                                         </div>
                                     </td>
 

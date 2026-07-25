@@ -52,6 +52,16 @@ final class PlanReconciler
                 }
             }
             unset($cell);
+            // Ist-nur-Buckets (Plan hat dort KEINE Zelle — z. B. Plan am Jahr, Ist je Monat): als
+            // leere Plan-Zelle (value 0 = Spread bleibt) + Ist ergänzen. Sonst wären Ist-Rollups
+            // (Q1/Q2 aus Monats-Ist) unsichtbar und für die Trend-Fortschreibung nicht auffindbar.
+            foreach ($actualCells as $b => $ac) {
+                if (! isset($row['cells'][$b])) {
+                    $a = round((float) $ac['value'], 4);
+                    $row['cells'][$b] = ['level' => $ac['level'] ?? TimeLevel::fromKey($b)->value, 'entered' => false, 'mode' => null, 'value' => 0.0, 'rest' => 0.0, 'derived' => true, 'actual' => $a, 'variance' => $a, 'hasActual' => true];
+                }
+            }
+            ksort($row['cells']);
         }
         unset($row);
 

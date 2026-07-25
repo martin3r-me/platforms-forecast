@@ -273,7 +273,7 @@
                 </div>
 
                 <div class="overflow-auto max-h-[72vh]">
-                    <table class="w-max border-separate border-spacing-0 text-sm">
+                    <table class="min-w-full border-separate border-spacing-0 text-sm">
                         <thead>
                             <tr>
                                 <th class="sticky left-0 top-0 z-30 bg-[var(--ui-surface-solid)] text-left px-4 py-2.5 font-medium text-[11px] uppercase tracking-wider text-[var(--ui-muted)] border-b border-[var(--ui-border)]/60 min-w-[200px]">Zeile</th>
@@ -304,6 +304,8 @@
                                         </div>
                                     </th>
                                 @endforeach
+                                {{-- Füll-Spalte: schluckt Restbreite, damit echte Spalten kompakt-links bleiben (kein Stretch) --}}
+                                <th class="sticky top-0 z-20 bg-[var(--ui-surface-solid)] border-b border-[var(--ui-border)]/60 w-full p-0"></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -531,6 +533,8 @@
                                             @endif
                                         </td>
                                     @endforeach
+                                    {{-- Füll-Zelle zur Füll-Spalte im Kopf --}}
+                                    <td class="border-b border-[var(--ui-border)]/40 w-full group-hover/row:bg-[var(--ui-muted-5)]/60"></td>
                                 </tr>
                             @endforeach
 

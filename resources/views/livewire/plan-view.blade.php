@@ -285,6 +285,14 @@
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium">@svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten aktiv</span>
                             <span class="text-[var(--ui-muted)]"><span class="font-medium">Klick</span> wählt · <span class="font-medium">Ziehen/⇧</span> Bereich · <span class="font-medium">Tippen/Enter/Doppelklick</span> ändert · <span class="font-medium">Entf</span> leert · <span class="font-medium">Pfeile</span> bewegen · <span class="font-medium">⌘/Strg+C/V</span> kopiert/fügt ein · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet.</span>
 
+                            {{-- Auto-Forecast: die (zukünftige) Auswahl aus der Ist-Historie fortschreiben --}}
+                            <span class="inline-flex items-center gap-1 pl-1 border-l border-[var(--ui-border)]/50">
+                                <span class="text-[var(--ui-muted)]">⤳ Trend:</span>
+                                <button type="button" @click="fcTrend('run_rate')" class="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-700 hover:bg-teal-500/20 transition-colors" title="Ausgewählte Zukunfts-Zellen aus der Ist-Historie fortschreiben: Ø der letzten Perioden (Run-Rate).">Run-Rate</button>
+                                <button type="button" @click="fcTrend('growth')" class="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-700 hover:bg-teal-500/20 transition-colors" title="Geometrisches Ø-Wachstum der Historie fortschreiben.">Wachstum</button>
+                                <button type="button" @click="fcTrend('linear')" class="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-700 hover:bg-teal-500/20 transition-colors" title="Lineare Regression über die Historie extrapolieren.">Linear</button>
+                            </span>
+
                             @if($lastEdit)
                                 {{-- Settle-Fenster: 30 s rückgängig, dann festgeschrieben. --}}
                                 <div wire:key="settle-{{ $editNonce }}" x-data="{ left: 30 }"
@@ -292,7 +300,7 @@
                                     class="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 font-medium ml-auto">
                                     @svg('heroicon-o-check-circle','w-3.5 h-3.5')
                                     @php $fcAct = $lastEdit['action'] ?? 'saved'; $fcCnt = $lastEdit['count'] ?? 1; @endphp
-                                    <span>@if($fcAct === 'saved') „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert @else {{ $fcCnt }} Zellen{{ $lastEdit['label'] ? ' · '.\Illuminate\Support\Str::limit($lastEdit['label'], 16) : '' }} {{ $fcAct === 'cleared' ? 'geleert' : ($fcAct === 'pasted' ? 'eingefügt' : 'gefüllt') }} @endif · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
+                                    <span>@if($fcAct === 'saved') „{{ \Illuminate\Support\Str::limit($lastEdit['label'], 22) }}" gespeichert @else {{ $fcCnt }} Zellen{{ $lastEdit['label'] ? ' · '.\Illuminate\Support\Str::limit($lastEdit['label'], 16) : '' }} {{ $fcAct === 'cleared' ? 'geleert' : ($fcAct === 'pasted' ? 'eingefügt' : ($fcAct === 'trend' ? 'fortgeschrieben' : 'gefüllt')) }} @endif · festgeschrieben in <span x-text="left" class="tabular-nums"></span> s</span>
                                     <button type="button" wire:click="undoLastEdit"
                                         class="inline-flex items-center gap-0.5 underline decoration-dotted hover:text-emerald-900">
                                         @svg('heroicon-o-arrow-uturn-left','w-3 h-3') rückgängig
@@ -693,6 +701,12 @@
     <script>
         // $wire dieser Komponente global greifbar machen (für Fill aus dem Drag-Handler).
         window.__fcWire = $wire;
+
+        // Auto-Forecast: die aktuelle Grid-Auswahl (zukünftige Zellen) per Trend fortschreiben.
+        window.fcTrend = (method) => {
+            const cells = window.fcGrid && window.fcGrid.rangeCells(false);
+            if (cells && cells.length && window.__fcWire) window.__fcWire.projectTrendRange(cells, method);
+        };
 
         // ── Auswahl-Modell (Excel-artiges Grid) ────────────────────────────────────────────
         // Zellen sind Anzeige (data-fc-r/c/row/col + data-fc-edit). EIN geteilter Editor-Input

@@ -6,6 +6,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
+use Platform\Forecast\Enums\RowKind;
 use Platform\Forecast\Enums\TimeLevel;
 use Platform\Forecast\Models\ForecastDistributionPolicy;
 use Platform\Forecast\Models\ForecastEntry;
@@ -19,6 +20,7 @@ use Platform\Forecast\Services\CellEditability;
 use Platform\Forecast\Services\LockService;
 use Platform\Forecast\Services\PlanReconciler;
 use Platform\Forecast\Services\PlanService;
+use Platform\Forecast\Services\TrendForecast;
 
 /**
  * Read-only Ansicht einer Planung: Zeilen × Zeit-Grid mit Zoom.
@@ -213,6 +215,92 @@ class PlanView extends Component
         $rows = array_values(array_unique(array_map(fn ($w) => $w['row'], $written)));
         $label = count($rows) === 1 ? ($labels[$rows[0]] ?? '') : (count($rows).' Zeilen');
         $this->lastEdit = ['cells' => $written, 'count' => count($written), 'label' => $label, 'action' => $action];
+    }
+
+    /**
+     * Auto-Forecast: die ausgewählten (zukünftigen) Zellen je Zeile aus ihrer Historie fortschreiben.
+     * Quelle je Zeile: IST bevorzugt, sonst Plan — nur Buckets derselben Ebene VOR dem ersten Ziel.
+     * Schreibt in den PLAN-Kanal (die fortgeschriebene Planung) und umgeht das Tor (System-Projektion,
+     * darf in noch nicht offene Zukunfts-Perioden schreiben). EIN Roundtrip, EIN Undo.
+     *
+     * @param  list<array{row?:string,bucket?:string}>  $cells
+     */
+    public function projectTrendRange(array $cells, string $method = 'run_rate'): void
+    {
+        $this->cellError = null;
+        $this->editNonce++;
+        $plan = $this->plan();
+
+        $byRow = [];
+        foreach ($cells as $c) {
+            $rk = (string) ($c['row'] ?? '');
+            $bk = (string) ($c['bucket'] ?? '');
+            if ($rk !== '' && $bk !== '') {
+                $byRow[$rk][] = $bk;
+            }
+        }
+        if ($byRow === []) {
+            $this->cellError = 'Keine Zielzellen für die Fortschreibung.';
+
+            return;
+        }
+
+        $kindByKey = [];
+        foreach ($plan->resolvedRows() as $r) {
+            $kindByKey[$r->key] = $r->kind;
+        }
+        $isFolder = ForecastPlan::where('parent_plan_id', $plan->id)->exists();
+
+        $view = (new PlanReconciler())->view($plan);
+        $trend = new TrendForecast();
+        $svc = new PlanService();
+        $written = [];
+        $label = null;
+
+        foreach ($byRow as $rowKey => $targets) {
+            if (($kindByKey[$rowKey] ?? null) === RowKind::Formula || $isFolder) {
+                continue; // nur Eingabe-Zeilen von Blättern lassen sich fortschreiben
+            }
+            sort($targets);
+            $level = TimeLevel::fromKey($targets[0])->value;
+            $first = $targets[0];
+
+            // Bekannte Reihe: Ist bevorzugt, sonst Plan — gleiche Ebene, VOR dem ersten Ziel.
+            $known = [];
+            foreach (($view['rows'][$rowKey]['cells'] ?? []) as $b => $cc) {
+                if (TimeLevel::fromKey($b)->value !== $level || $b >= $first) {
+                    continue;
+                }
+                $val = ($cc['hasActual'] ?? false)
+                    ? ($cc['actual'] ?? null)
+                    : ((($cc['entered'] ?? false) || (($cc['value'] ?? 0) != 0)) ? ($cc['value'] ?? null) : null);
+                if ($val !== null) {
+                    $known[$b] = (float) $val;
+                }
+            }
+            if ($known === []) {
+                continue;
+            }
+
+            foreach ($trend->project($known, $targets, $method) as $b => $v) {
+                try {
+                    $svc->setCell($plan, $rowKey, $b, round((float) $v, 6), Mode::Detail, Auth::id(), enforceGate: false, channel: 'plan');
+                    $written[] = ['row' => $rowKey, 'bucket' => $b];
+                    $label ??= $this->rowMeta($plan, $rowKey)['label'];
+                } catch (\Throwable $e) {
+                    // einzelne Zelle übersprungen
+                }
+            }
+        }
+
+        if ($written === []) {
+            $this->cellError = 'Nichts fortgeschrieben — keine Historie in der Auswahl.';
+
+            return;
+        }
+
+        $rows = array_values(array_unique(array_map(fn ($w) => $w['row'], $written)));
+        $this->lastEdit = ['cells' => $written, 'count' => count($written), 'label' => count($rows) === 1 ? $label : (count($rows).' Zeilen'), 'action' => 'trend'];
     }
 
     /** isFactor + Label einer Zeile (für Speichern/Anzeige). */

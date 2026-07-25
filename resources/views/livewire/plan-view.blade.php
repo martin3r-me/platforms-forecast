@@ -81,7 +81,7 @@
     </x-slot>
 
     <x-ui-page-container>
-        <div class="space-y-6">
+        <div class="space-y-4">
 
             {{-- ═══════════ Kontext-Kopf ═══════════ --}}
             <div class="space-y-4">
@@ -135,63 +135,22 @@
                 </div>
             </div>
 
-            {{-- ═══════════ KPI-Karten ═══════════ --}}
+            {{-- ═══════════ KPI-Streifen (kompakt: Label + Wert je Kennzahl in einer Zeile) ═══════════ --}}
             @if($kpiRows->isNotEmpty())
-                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1.5 -mt-1 px-0.5">
                     @foreach($kpiRows as $rowKey => $row)
                         @php
                             $t = $meta[$rowKey] ?? ['value' => 0, 'rest' => 0, 'committed' => 0, 'implied' => false];
                             $isF = $rowInfo[$rowKey]['isFormula'] ?? false;
                             $naMaster = $isMaster && ($rowInfo[$rowKey]['nonAdditive'] ?? false) && ! ($rowInfo[$rowKey]['hasEffective'] ?? false);
-                            $effMaster = $isMaster && ($rowInfo[$rowKey]['hasEffective'] ?? false);
-                            $pct = $t['value'] != 0 ? round($t['committed'] / $t['value'] * 100) : 100;
                         @endphp
-                        <div class="relative overflow-hidden rounded-2xl border border-[var(--ui-border)]/60 bg-[var(--ui-surface)] p-4">
-                            <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--ui-primary)]/40 to-transparent"></div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-xs font-medium text-[var(--ui-muted)] truncate">{{ $row['label'] }}</span>
-                                @if($isF)
-                                    <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]">{{ $rowInfo[$rowKey]['aggLabel'] }}</span>
-                                @else
-                                    <span class="text-[10px] uppercase tracking-wider text-[var(--ui-muted)]/70">{{ $unitOf($rowKey) ?: $row['kind'] }}</span>
-                                @endif
-                            </div>
-                            <div class="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums {{ $naMaster ? 'text-[var(--ui-muted)]/40' : $toneOf($rowKey, $t['value']) }}">
-                                @if($naMaster)–@else{{ $t['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $t['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $t['value'])) }}<span class="text-sm font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span>@endif
-                            </div>
-                            @if($naMaster)
-                                <div class="mt-3 inline-flex items-center gap-1 text-[11px] text-[var(--ui-muted)]" title="Quoten/Faktoren sind nicht additiv — am Ordner nicht aufsummierbar, nur je Blatt erfasst.">
-                                    @svg('heroicon-o-minus-circle','w-3.5 h-3.5') nicht aggregierbar · je Blatt erfasst
-                                </div>
-                            @elseif($effMaster)
-                                <div class="mt-3 inline-flex items-center gap-1 text-[11px] text-indigo-600" title="Effektiver Wert am Ordner = Produkt ÷ Basis aus den konsolidierten Zahlen (nicht der aufsummierte Faktor).">
-                                    @svg('heroicon-o-calculator','w-3.5 h-3.5') effektiv · aus den Blättern gerechnet
-                                </div>
-                            @elseif($isF)
-                                @php $sc = $rowInfo[$rowKey]['sourceCount'] ?? count($rowInfo[$rowKey]['sources']); @endphp
-                                <div class="mt-3 text-[11px] text-[var(--ui-muted)]">berechnet aus {{ $sc }} {{ $sc === 1 ? 'Zeile' : 'Zeilen' }}</div>
-                            @elseif($isMaster)
-                                <div class="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600">
-                                    @svg('heroicon-o-folder','w-3.5 h-3.5')
-                                    @if($subMasterCount > 0)
-                                        bündelt {{ $childCount }} Planungen · {{ $leafCount }} {{ $leafCount === 1 ? 'Blatt' : 'Blätter' }}
-                                    @else
-                                        bündelt {{ $childCount }} {{ $childCount === 1 ? 'Blatt' : 'Blätter' }}
-                                    @endif
-                                </div>
-                            @else
-                                <div class="mt-3 h-1.5 rounded-full bg-[var(--ui-muted-10)] overflow-hidden flex">
-                                    <div class="h-full bg-[var(--ui-primary)]" style="width: {{ $pct }}%"></div>
-                                    <div class="h-full bg-amber-400/70" style="width: {{ 100 - $pct }}%"></div>
-                                </div>
-                                <div class="mt-1.5 flex items-center justify-between text-[11px]">
-                                    <span class="text-[var(--ui-muted)]">{{ $pct }}% verbindlich</span>
-                                    @if($t['rest'] > 0)
-                                        <span class="text-amber-600 font-medium">Rest {{ $fmt($t['rest']) }} verteilt</span>
-                                    @else
-                                        <span class="text-emerald-600 font-medium">voll verplant</span>
-                                    @endif
-                                </div>
+                        <div class="inline-flex items-baseline gap-1.5 min-w-0">
+                            <span class="text-[11px] font-medium text-[var(--ui-muted)] truncate max-w-[11rem]">{{ $row['label'] }}</span>
+                            <span class="text-lg font-semibold tracking-tight tabular-nums {{ $naMaster ? 'text-[var(--ui-muted)]/40' : $toneOf($rowKey, $t['value']) }}">
+                                @if($naMaster)–@else{{ $t['implied'] ? '≈' : '' }}{{ $signOf($rowKey, $t['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $t['value'])) }}<span class="text-[11px] font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span>@endif
+                            </span>
+                            @if(! $isF && ! $isMaster && $t['rest'] > 0)
+                                <span class="text-[10px] text-amber-600 whitespace-nowrap" title="Rest wird nach unten verteilt">· Rest {{ $fmt($t['rest']) }}</span>
                             @endif
                         </div>
                     @endforeach
@@ -360,7 +319,7 @@
                                 @endphp
                                 @if($sec && $sec !== $lastSection)
                                     <tr>
-                                        <td colspan="99" class="sticky left-0 bg-[var(--ui-muted-10)]/60 px-4 py-1.5 border-y border-[var(--ui-border)]/50">
+                                        <td colspan="99" class="sticky left-0 bg-[var(--ui-muted-10)]/60 px-4 py-1 border-y border-[var(--ui-border)]/50">
                                             <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--ui-muted)]">{{ $sec }}</span>
                                         </td>
                                     </tr>
@@ -368,7 +327,7 @@
                                 @php $lastSection = $sec; @endphp
                                 <tr class="group/row {{ $isF ? 'bg-[var(--ui-muted-5)]/40' : '' }}">
                                     {{-- Zeilen-Kopf --}}
-                                    <td class="sticky left-0 z-10 bg-[var(--ui-surface-solid)] {{ $isF ? 'shadow-[inset_0_0_0_100vw_var(--ui-muted-5)]' : '' }} px-4 py-3 border-b border-[var(--ui-border)]/40 transition-colors">
+                                    <td class="sticky left-0 z-10 bg-[var(--ui-surface-solid)] {{ $isF ? 'shadow-[inset_0_0_0_100vw_var(--ui-muted-5)]' : '' }} px-4 py-1.5 border-b border-[var(--ui-border)]/40 transition-colors">
                                         <div class="flex items-center gap-1.5">
                                             @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--ui-muted-10)] text-[var(--ui-muted)]" title="{{ ! empty($rowInfo[$rowKey]['expr']) ? 'Ausdruck: '.$rowInfo[$rowKey]['expr'] : 'Berechnet: ergibt sich aus anderen Zeilen — nicht eingebbar' }}">ƒ</span>@endif
                                             @if($isMaster && ! $isF)<span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600 inline-flex items-center gap-0.5" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch — hier nicht direkt eingebbar">↑</span>@endif
@@ -399,7 +358,7 @@
                                             $s = $meta[$rowKey] ?? ['value' => 0, 'rest' => 0, 'committed' => 0, 'implied' => false];
                                             $sPct = $s['value'] != 0 ? round($s['committed'] / $s['value'] * 100) : 100;
                                         @endphp
-                                        <td class="text-right px-4 py-3 border-b border-r border-[var(--ui-border)]/40 bg-[var(--ui-primary)]/[0.04] align-top">
+                                        <td class="text-right px-4 py-1.5 border-b border-r border-[var(--ui-border)]/40 bg-[var(--ui-primary)]/[0.04] align-top">
                                             <div class="font-semibold tabular-nums {{ $toneOf($rowKey, $s['value']) }}">{{ $s['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $s['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $s['value'])) }}<span class="text-[10px] font-normal text-[var(--ui-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></div>
                                             @if(! $isF && $s['rest'] > 0)
                                                 <div class="mt-1.5 h-1 rounded-full bg-[var(--ui-muted-10)] overflow-hidden flex">
@@ -452,7 +411,7 @@
                                             $pfRaw = $pfSrc === null ? ''
                                                 : rtrim(rtrim(number_format($isFu ? $pfSrc * 100 : (float) $pfSrc, 4, '.', ''), '0'), '.');
                                         @endphp
-                                        <td class="relative text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top transition-colors
+                                        <td class="relative text-right px-3 py-1.5 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top transition-colors
                                             {{ $cellState === 'open'
                                                 ? 'bg-[var(--ui-primary)]/[0.04] cursor-text group-hover/row:bg-[var(--ui-primary)]/[0.07] hover:!bg-[var(--ui-primary)]/[0.11] hover:shadow-[inset_0_0_0_1px_var(--ui-primary)]'
                                                 : ($cellState === 'spread'

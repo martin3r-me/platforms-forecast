@@ -141,9 +141,18 @@ final class PlanReconciler
                 $nonRecomputable[$k] = false;
                 continue;
             }
+            // Referenzen der Formel: agg/sources UND die [key]-Referenzen einer Ausdruck-Formel.
+            $refs = $rowInfo[$k]['sources'];
+            if (! empty($rowInfo[$k]['expr']) && preg_match_all('/\[([^\]]+)\]/', (string) $rowInfo[$k]['expr'], $m)) {
+                $refs = array_merge($refs, $m[1]);
+            }
+            // Nicht neu-rechenbar am Ordner NUR, wenn die Formel DIREKT eine nicht-additive Größe
+            // (Faktor/Quote) nutzt — die wird nicht konsolidiert, also käme beim Neurechnen Unsinn
+            // heraus → aus den Kindern summieren. KEINE transitive Weitergabe: nachgelagerte Formeln
+            // (Differenz/Quote wie Marge) rechnen wieder korrekt auf den dann konsolidierten Werten.
             $nr = false;
-            foreach ($rowInfo[$k]['sources'] as $s) {
-                if (($rowInfo[$s]['nonAdditive'] ?? false) || ($nonRecomputable[$s] ?? false)) {
+            foreach ($refs as $s) {
+                if ($rowInfo[$s]['nonAdditive'] ?? false) {
                     $nr = true;
                     break;
                 }
@@ -205,6 +214,7 @@ final class PlanReconciler
         // (Formel-Zeilen werden danach auf den konsolidierten Eingaben neu gerechnet).
         $children = ForecastPlan::where('parent_plan_id', $plan->id)->get();
         $hasChildren = $children->isNotEmpty();
+        $wavgAcc = []; // rowKey => bucket => ['num' => Σ Wert×Gewicht, 'den' => Σ Gewicht]
         foreach ($children as $child) {
             $cv = $this->compute($child, $visiting);
             foreach ($resolved as $row) {
@@ -225,6 +235,19 @@ final class PlanReconciler
                     continue;
                 }
 
+                // Gewichteter Ø (Ø-Preis o. Ä.): über die KINDER NICHT summieren, sondern gewichtet
+                // mitteln — Σ(Wert×Gewicht) ÷ Σ(Gewicht), Gewicht = die weight_by-Zeile im Kind.
+                if (! ($info['isFormula'] ?? false) && ($info['timeAgg'] ?? 'flow') === 'wavg') {
+                    $wk = $info['weightBy'] ?? null;
+                    foreach (($cv['rows'][$row->key]['cells'] ?? []) as $b => $c) {
+                        $w = (float) ($cv['rows'][$wk]['cells'][$b]['value'] ?? 0);
+                        $wavgAcc[$row->key][$b]['num'] = ($wavgAcc[$row->key][$b]['num'] ?? 0) + $c['value'] * $w;
+                        $wavgAcc[$row->key][$b]['den'] = ($wavgAcc[$row->key][$b]['den'] ?? 0) + $w;
+                    }
+
+                    continue;
+                }
+
                 $cells = $rows[$row->key]['cells'];
                 foreach (($cv['rows'][$row->key]['cells'] ?? []) as $b => $c) {
                     if (! isset($cells[$b])) {
@@ -236,6 +259,19 @@ final class PlanReconciler
                 ksort($cells);
                 $rows[$row->key]['cells'] = $cells;
             }
+        }
+
+        // Gewichtete Mittel finalisieren: Σ(Wert×Gewicht) ÷ Σ(Gewicht) je Bucket.
+        foreach ($wavgAcc as $rk => $buckets) {
+            $cells = $rows[$rk]['cells'];
+            foreach ($buckets as $b => $acc) {
+                if (! isset($cells[$b])) {
+                    $cells[$b] = ['level' => TimeLevel::fromKey($b)->value, 'entered' => false, 'mode' => null, 'value' => 0.0, 'rest' => 0.0, 'derived' => true];
+                }
+                $cells[$b]['value'] = round(($acc['den'] ?? 0) != 0 ? $acc['num'] / $acc['den'] : 0, 4);
+            }
+            ksort($cells);
+            $rows[$rk]['cells'] = $cells;
         }
 
         // Referenzierte Pläne rekursiv berechnen (mit Cache über $refViews)

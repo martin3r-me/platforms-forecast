@@ -17,7 +17,7 @@ class ForecastChange extends Model
 
     protected $fillable = [
         'uuid', 'team_id', 'plan_id', 'user_id', 'version', 'op',
-        'row_key', 'bucket_key', 'level',
+        'row_key', 'bucket_key', 'channel', 'level',
         'old_value', 'old_mode', 'new_value', 'new_mode', 'payload',
     ];
 

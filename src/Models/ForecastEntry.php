@@ -14,7 +14,7 @@ class ForecastEntry extends Model
     protected $table = 'forecast_entries';
 
     protected $fillable = [
-        'team_id', 'plan_id', 'row_key', 'bucket_key', 'level', 'value', 'mode',
+        'team_id', 'plan_id', 'row_key', 'bucket_key', 'channel', 'level', 'value', 'mode',
     ];
 
     protected $casts = [

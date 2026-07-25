@@ -22,7 +22,7 @@ final class CellEditability
     /**
      * @return array{editable: bool, state: string, reason: ?string}
      */
-    public function check(ForecastPlan $plan, string $rowKey, string $bucketKey): array
+    public function check(ForecastPlan $plan, string $rowKey, string $bucketKey, string $channel = 'plan'): array
     {
         $row = null;
         foreach ($plan->resolvedRows() as $r) {
@@ -35,7 +35,7 @@ final class CellEditability
             return ['editable' => false, 'state' => 'unknown', 'reason' => 'Zeile nicht gefunden.'];
         }
 
-        // Formel/Verweis → berechnet
+        // Formel/Verweis → berechnet (auch das Ist von Formeln ergibt sich aus den Ist-Eingaben)
         if ($row->kind === RowKind::Formula) {
             return ['editable' => false, 'state' => 'computed', 'reason' => 'Berechnete Zeile (Formel) — ergibt sich aus anderen Zeilen.'];
         }
@@ -43,6 +43,12 @@ final class CellEditability
         // Ordner → abgeleitet (Werte kommen aus den untergeordneten Planungen hoch)
         if (ForecastPlan::where('parent_plan_id', $plan->id)->exists()) {
             return ['editable' => false, 'state' => 'derived', 'reason' => 'Ordner — Werte kommen aus den untergeordneten Planungen.'];
+        }
+
+        // Ist-Kanal: Ist-Werte gibt es gerade in GESCHLOSSENEN Perioden — die Plan-Sperre gilt hier
+        // NICHT. Jede Eingabe-Zeile ist auf jeder Ebene erfassbar (Monat/Quartal … rollen hoch).
+        if ($channel === 'actual') {
+            return ['editable' => true, 'state' => 'actual', 'reason' => null];
         }
 
         // Sperre: nur offene Perioden (auf/unter der Sperr-Ebene) sind eingebbar.

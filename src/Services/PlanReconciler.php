@@ -26,11 +26,43 @@ final class PlanReconciler
      */
     private array $memo = [];
 
+    /** Aktueller Wert-Kanal der Berechnung: 'plan' oder 'actual' (Ist). */
+    private string $channel = 'plan';
+
     /**
+     * Reconciled Sicht des PLAN-Kanals — angereichert je Zelle um den Ist-Wert ('actual') und die
+     * Abweichung ('variance' = Ist − Plan), wo Ist-Daten vorliegen. Beide Kanäle laufen durch
+     * DIESELBE Reconciliation (nur andere Einträge), damit Ist genauso hochrollt wie Plan.
+     *
      * @return array{plan: array, rows: array<string, array>, rowInfo: array<string, array>}
      */
     public function view(ForecastPlan $plan): array
     {
+        $planView = $this->channelView($plan, 'plan');
+        $actualView = $this->channelView($plan, 'actual');
+
+        foreach ($planView['rows'] as $rk => &$row) {
+            $actualCells = $actualView['rows'][$rk]['cells'] ?? [];
+            foreach ($row['cells'] as $b => &$cell) {
+                if (isset($actualCells[$b])) {
+                    $a = (float) $actualCells[$b]['value'];
+                    $cell['actual'] = round($a, 4);
+                    $cell['variance'] = round($a - (float) ($cell['value'] ?? 0), 4);
+                    $cell['hasActual'] = true;
+                }
+            }
+            unset($cell);
+        }
+        unset($row);
+
+        return $planView;
+    }
+
+    /** Eine reine Kanal-Sicht (plan|actual) rechnen — mit eigenem Memo-Schlüssel. */
+    private function channelView(ForecastPlan $plan, string $channel): array
+    {
+        $this->channel = $channel;
+
         return $this->compute($plan, []);
     }
 
@@ -43,8 +75,9 @@ final class PlanReconciler
             // Zyklus: NICHT cachen (unvollständiges Ergebnis).
             return ['plan' => $this->planMeta($plan), 'rows' => [], 'rowInfo' => []];
         }
-        if (isset($this->memo[$plan->id])) {
-            return $this->memo[$plan->id];
+        $memoKey = $plan->id.'|'.$this->channel;
+        if (isset($this->memo[$memoKey])) {
+            return $this->memo[$memoKey];
         }
         $visiting[] = $plan->id;
 
@@ -394,7 +427,7 @@ final class PlanReconciler
         }
 
         $result = ['plan' => $this->planMeta($plan), 'rows' => $rows, 'rowInfo' => $rowInfo, 'totals' => $totals];
-        $this->memo[$plan->id] = $result;
+        $this->memo[$memoKey] = $result;
 
         return $result;
     }
@@ -713,7 +746,7 @@ final class PlanReconciler
     private function entriesByRow(ForecastPlan $plan): array
     {
         $byRow = [];
-        foreach ($plan->entries()->get() as $e) {
+        foreach ($plan->entries()->where('channel', $this->channel)->get() as $e) {
             $byRow[$e->row_key][] = [
                 'key'   => $e->bucket_key,
                 'value' => (float) $e->value,

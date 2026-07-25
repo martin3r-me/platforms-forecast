@@ -263,6 +263,12 @@
                                     {{ $showDelta ? 'bg-[var(--ui-primary)]/10 text-[var(--ui-primary)] font-medium' : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)]' }}">
                                 @svg('heroicon-o-arrow-trending-up','w-3.5 h-3.5') Δ Vorperiode
                             </button>
+                            <button type="button" wire:click="toggleActual"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors
+                                    {{ $showActual ? 'bg-teal-500/15 text-teal-700 font-medium' : 'text-[var(--ui-muted)] hover:bg-[var(--ui-muted-10)]' }}"
+                                title="Ist-Werte + Abweichung anzeigen. Im Bearbeiten-Modus werden dann Ist-Werte eingegeben (jede Periode).">
+                                @svg('heroicon-o-scale','w-3.5 h-3.5') Ist / Δ
+                            </button>
                         </div>
                         {{-- Feld-Zustände: sieht es aus wie ein Feld, kannst du tippen — sonst nicht. --}}
                         <div class="flex items-center gap-3 text-[11px] text-[var(--ui-muted)]">
@@ -416,29 +422,38 @@
                                                 : ((($isMaster && ! $isF) || ! empty($rowInfo[$rowKey]['refPlans'])) ? 'derived'
                                                 : ($colOpen ? 'open' : ($colSpread ? 'spread' : 'locked')));
                                             $hasDetailMark = ($timeDetail[$rowKey][$bkt] ?? false) && $canZoom;
-                                            // Grobe Rate/Bestand-Zelle MIT feinerem Detail: die grobe Schätzung würde vom Detail
-                                            // dominiert (nonAdditive → Detail gewinnt), eine Eingabe hier liefe ins Leere. Also nicht
-                                            // editierbar — der „hat feineres Detail"-Marker weist aufs Reinzoomen. (Fluss bleibt: dort
-                                            // ist die grobe Schätzung als Envelope sinnvoll.)
-                                            if ($cellState === 'spread' && $rowReplicates && $hasDetailMark) {
+                                            // (Plan) Grobe Rate/Bestand-Zelle MIT feinerem Detail: die grobe Schätzung würde vom Detail
+                                            // dominiert — nicht editierbar; der Detail-Marker weist aufs Reinzoomen.
+                                            if (! $showActual && $cellState === 'spread' && $rowReplicates && $hasDetailMark) {
                                                 $cellState = 'derived';
                                             }
-                                            // Grid-Editor (Auswahl-Modell): editierbar = offen/spread im Bearbeiten-Modus.
-                                            $cellEditable = $editMode && ($cellState === 'open' || $cellState === 'spread');
+                                            $isInputRow = ! $isF && ! (($isMaster && ! $isF) || ! empty($rowInfo[$rowKey]['refPlans']));
+                                            // Ist-Ansicht im Bearbeiten-Modus: JEDE Eingabe-Zeile ist im Ist-Kanal erfassbar (jede
+                                            // Periode — Ist gibt's oft in geschlossenen Perioden); Formel/Ordner nicht.
+                                            if ($showActual && $editMode) {
+                                                $cellState = $isF ? 'computed' : ($isInputRow ? 'actual' : 'derived');
+                                            }
+                                            // Grid-Editor: editierbar = offen/spread/ist im Bearbeiten-Modus.
+                                            $cellEditable = $editMode && in_array($cellState, ['open', 'spread', 'actual'], true);
                                             $isFu = $rowInfo[$rowKey]['isFactor'] ?? false;
                                             $cellObj = $isF ? null : ($row['cells'][$col['bucket']] ?? null);
-                                            $pfRaw = ($cellObj && ($cellObj['entered'] ?? false))
-                                                ? rtrim(rtrim(number_format($isFu ? ($cellObj['value'] ?? 0) * 100 : (float) ($cellObj['value'] ?? 0), 4, '.', ''), '0'), '.')
-                                                : '';
+                                            // Prefill: im Ist-Modus der Ist-Wert, sonst der erfasste Plan-Wert.
+                                            $pfSrc = ($showActual && $editMode)
+                                                ? (($cellObj['hasActual'] ?? false) ? ($cellObj['actual'] ?? 0) : null)
+                                                : (($cellObj && ($cellObj['entered'] ?? false)) ? ($cellObj['value'] ?? 0) : null);
+                                            $pfRaw = $pfSrc === null ? ''
+                                                : rtrim(rtrim(number_format($isFu ? $pfSrc * 100 : (float) $pfSrc, 4, '.', ''), '0'), '.');
                                         @endphp
                                         <td class="relative text-right px-3 py-3 border-b border-[var(--ui-border)]/40 whitespace-nowrap align-top transition-colors
                                             {{ $cellState === 'open'
                                                 ? 'bg-[var(--ui-primary)]/[0.04] cursor-text group-hover/row:bg-[var(--ui-primary)]/[0.07] hover:!bg-[var(--ui-primary)]/[0.11] hover:shadow-[inset_0_0_0_1px_var(--ui-primary)]'
                                                 : ($cellState === 'spread'
                                                     ? 'bg-amber-400/[0.05] cursor-text group-hover/row:bg-amber-400/[0.09] hover:!bg-amber-400/[0.14] hover:shadow-[inset_0_0_0_1px_rgb(251_191_36_/_0.6)]'
+                                                : ($cellState === 'actual'
+                                                    ? 'bg-teal-500/[0.06] cursor-text group-hover/row:bg-teal-500/[0.1] hover:!bg-teal-500/[0.16] hover:shadow-[inset_0_0_0_1px_rgb(20_184_166_/_0.6)]'
                                                 : ($cellState === 'locked'
                                                     ? 'opacity-50 group-hover/row:bg-[var(--ui-muted-5)]/50'
-                                                    : 'group-hover/row:bg-[var(--ui-muted-5)]/60')) }}"
+                                                    : 'group-hover/row:bg-[var(--ui-muted-5)]/60'))) }}"
                                             data-fc-r="{{ $gridRowIdx }}" data-fc-c="{{ $loop->index }}"
                                             data-fc-row="{{ $rowKey }}" data-fc-col="{{ $col['bucket'] }}"
                                             @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif>
@@ -516,9 +531,19 @@
                                                 $hasDelta = $showDelta && isset($delta[$rowKey][$col['bucket']]);
                                                 $qBasis = $rowInfo[$rowKey]['quoteBasis'] ?? null;
                                                 $hasQuote = $showShare && $qBasis && isset($quote[$rowKey][$col['bucket']]);
+                                                // Ist + Δ: nur in der Ist-Ansicht, wo Ist-Daten vorliegen und nicht gerade editiert wird.
+                                                $acCell = $row['cells'][$col['bucket']] ?? null;
+                                                $hasAct = $showActual && ! $cellEditable && $acCell && ($acCell['hasActual'] ?? false);
                                             @endphp
-                                            @if($hasShare || $hasDelta || $hasQuote)
+                                            @if($hasShare || $hasDelta || $hasQuote || $hasAct)
                                                 <div class="mt-2 pt-1.5 border-t border-dashed border-[var(--ui-border)]/40 flex flex-col items-end gap-1">
+                                                    @if($hasAct)
+                                                        @php $var = $acCell['variance'] ?? 0; @endphp
+                                                        <div class="inline-flex items-center gap-1.5 text-[10px] font-medium" title="Ist − Plan = Abweichung">
+                                                            <span class="text-teal-700">Ist {{ $signOf($rowKey, $acCell['actual']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $acCell['actual'])) }}</span>
+                                                            <span class="{{ $deltaTone($rowKey, $var) }}">Δ {{ $var > 0 ? '+' : ($var < 0 ? '−' : '') }}{{ $fmtRow($rowKey, abs($var)) }}</span>
+                                                        </div>
+                                                    @endif
                                                     @if($hasShare)
                                                         <div class="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--ui-primary)]">
                                                             <span class="w-8 h-1 rounded-full bg-[var(--ui-muted-10)] overflow-hidden inline-flex">

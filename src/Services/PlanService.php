@@ -81,34 +81,34 @@ final class PlanService
         });
     }
 
-    /** Setzt eine Zelle (value + mode) → neue Version. */
-    public function setCell(ForecastPlan $plan, string $rowKey, string $bucketKey, float $value, Mode $mode, ?int $userId = null, bool $enforceGate = false): ForecastEntry
+    /** Setzt eine Zelle (value + mode) im Kanal (plan|actual) → neue Version. */
+    public function setCell(ForecastPlan $plan, string $rowKey, string $bucketKey, float $value, Mode $mode, ?int $userId = null, bool $enforceGate = false, string $channel = 'plan'): ForecastEntry
     {
         // Editier-Tor: nur für die UI (enforceGate=true); MCP/Admin schreibt frei.
         if ($enforceGate) {
-            $gate = (new CellEditability())->check($plan, $rowKey, $bucketKey);
+            $gate = (new CellEditability())->check($plan, $rowKey, $bucketKey, $channel);
             if (! $gate['editable']) {
                 throw new \DomainException($gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.');
             }
         }
 
-        return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $value, $mode, $userId) {
+        return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $value, $mode, $userId, $channel) {
             $level = TimeLevel::fromKey($bucketKey);
 
             $existing = ForecastEntry::where('plan_id', $plan->id)
-                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->first();
+                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->first();
 
             $old = $existing
                 ? ['value' => (float) $existing->value, 'mode' => $this->modeValue($existing->mode)]
                 : ['value' => null, 'mode' => null];
 
             $entry = ForecastEntry::updateOrCreate(
-                ['plan_id' => $plan->id, 'row_key' => $rowKey, 'bucket_key' => $bucketKey],
+                ['plan_id' => $plan->id, 'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel],
                 ['team_id' => $plan->team_id, 'level' => $level->value, 'value' => $value, 'mode' => $mode->value],
             );
 
             $this->recordChange($plan, $userId, 'set', [
-                'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'level' => $level->value,
+                'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel, 'level' => $level->value,
                 'old_value' => $old['value'], 'old_mode' => $old['mode'],
                 'new_value' => $value, 'new_mode' => $mode->value,
             ]);
@@ -122,11 +122,11 @@ final class PlanService
      * Fensters (Vertipper vor dem Festschreiben). Setzt den Snapshot auf den Vorzustand zurück
      * und entfernt das Event aus dem Ledger (im Fenster gilt: keine Historie). Danach: gesperrt.
      */
-    public function undoRecent(ForecastPlan $plan, string $rowKey, string $bucketKey, ?int $userId = null, int $windowSeconds = 35): bool
+    public function undoRecent(ForecastPlan $plan, string $rowKey, string $bucketKey, ?int $userId = null, int $windowSeconds = 35, string $channel = 'plan'): bool
     {
-        return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $windowSeconds) {
+        return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $windowSeconds, $channel) {
             $change = ForecastChange::where('plan_id', $plan->id)
-                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)
+                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)
                 ->whereIn('op', ['set', 'clear'])
                 ->orderByDesc('version')->orderByDesc('id')->first();
 
@@ -139,11 +139,11 @@ final class PlanService
 
             // Snapshot auf den Zustand VOR der Änderung.
             if ($change->old_value === null) {
-                ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->delete();
+                ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->delete();
             } else {
                 $level = TimeLevel::fromKey($bucketKey);
                 ForecastEntry::updateOrCreate(
-                    ['plan_id' => $plan->id, 'row_key' => $rowKey, 'bucket_key' => $bucketKey],
+                    ['plan_id' => $plan->id, 'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel],
                     ['team_id' => $plan->team_id, 'level' => $level->value, 'value' => (float) $change->old_value, 'mode' => $change->old_mode ?? Mode::Detail->value],
                 );
             }
@@ -155,19 +155,19 @@ final class PlanService
         });
     }
 
-    /** Leert eine Zelle → neue Version. */
-    public function clearCell(ForecastPlan $plan, string $rowKey, string $bucketKey, ?int $userId = null): bool
+    /** Leert eine Zelle im Kanal → neue Version. */
+    public function clearCell(ForecastPlan $plan, string $rowKey, string $bucketKey, ?int $userId = null, string $channel = 'plan'): bool
     {
-        return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $userId) {
+        return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $userId, $channel) {
             $existing = ForecastEntry::where('plan_id', $plan->id)
-                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->first();
+                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->first();
 
             if (! $existing) {
                 return false;
             }
 
             $this->recordChange($plan, $userId, 'clear', [
-                'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'level' => $this->levelValue($existing->level),
+                'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel, 'level' => $this->levelValue($existing->level),
                 'old_value' => (float) $existing->value, 'old_mode' => $this->modeValue($existing->mode),
                 'new_value' => null, 'new_mode' => null,
             ]);
@@ -329,6 +329,7 @@ final class PlanService
             'op' => $op,
             'row_key' => $data['row_key'] ?? null,
             'bucket_key' => $data['bucket_key'] ?? null,
+            'channel' => $data['channel'] ?? 'plan',
             'level' => $data['level'] ?? null,
             'old_value' => $data['old_value'] ?? null,
             'old_mode' => $data['old_mode'] ?? null,

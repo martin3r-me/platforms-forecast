@@ -45,6 +45,9 @@ class PlanView extends Component
     /** Delta-Ansicht: Veränderung je Zelle zur vorherigen Spalte (absolut + %). */
     public bool $showDelta = false;
 
+    /** Ist/Δ-Ansicht: je Zelle Ist-Wert + Abweichung; im Bearbeiten-Modus wird der IST-Kanal editiert. */
+    public bool $showActual = false;
+
     /** Bearbeiten-Modus: nur „open"-Zellen werden zum Tippfeld (Opt-in, Default aus). */
     public bool $editMode = false;
 
@@ -88,6 +91,20 @@ class PlanView extends Component
         $this->showDelta = ! $this->showDelta;
     }
 
+    /** Ist/Δ-Ansicht umschalten — an: sehen (Ist+Δ) UND im Bearbeiten-Modus den Ist-Kanal eingeben. */
+    public function toggleActual(): void
+    {
+        $this->showActual = ! $this->showActual;
+        $this->cellError = null;
+        $this->lastEdit = null;
+    }
+
+    /** Aktiver Schreib-Kanal: bei Ist-Ansicht wird Ist eingegeben, sonst Plan. */
+    private function channel(): string
+    {
+        return $this->showActual ? 'actual' : 'plan';
+    }
+
     public function toggleEdit(): void
     {
         $this->editMode = ! $this->editMode;
@@ -107,7 +124,7 @@ class PlanView extends Component
             $svc = new PlanService();
             $plan = $this->plan();
             foreach ($this->lastEdit['cells'] ?? [] as $c) {
-                $svc->undoRecent($plan, (string) $c['row'], (string) $c['bucket'], Auth::id());
+                $svc->undoRecent($plan, (string) $c['row'], (string) $c['bucket'], Auth::id(), 35, $this->channel());
             }
             $this->lastEdit = null;
         } catch (\DomainException $e) {
@@ -216,13 +233,15 @@ class PlanView extends Component
      */
     private function applyCell(ForecastPlan $plan, PlanService $service, string $rowKey, string $bucket, string $raw, bool $isFactor, bool $literal = false): void
     {
+        $channel = $this->channel();
+
         if ($raw === '') {
             // Löschen — ebenfalls durchs Tor.
-            $gate = (new CellEditability())->check($plan, $rowKey, $bucket);
+            $gate = (new CellEditability())->check($plan, $rowKey, $bucket, $channel);
             if (! $gate['editable']) {
                 throw new \DomainException($gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.');
             }
-            $service->clearCell($plan, $rowKey, $bucket, Auth::id());
+            $service->clearCell($plan, $rowKey, $bucket, Auth::id(), $channel);
 
             return;
         }
@@ -231,8 +250,8 @@ class PlanView extends Component
             // Einfügen/Fill: Wert wörtlich setzen (Excel „-500" = setzen, NICHT der Minus-Operator).
             $resolved = $this->parseNumber($raw);
         } else {
-            // Tippen: Inline-Operatoren relativ zum aktuellen (angezeigten) Wert.
-            $entry = ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucket)->first();
+            // Tippen: Inline-Operatoren relativ zum aktuellen (angezeigten) Wert DES KANALS.
+            $entry = ForecastEntry::where('plan_id', $plan->id)->where('row_key', $rowKey)->where('bucket_key', $bucket)->where('channel', $channel)->first();
             $currentStored = $entry ? (float) $entry->value : 0.0;
             $currentDisplayed = $isFactor ? $currentStored * 100 : $currentStored; // Faktor rechnet in %-Anzeige
             $resolved = $this->resolveInput($raw, $currentDisplayed);
@@ -242,7 +261,7 @@ class PlanView extends Component
         }
         $store = round($isFactor ? $resolved / 100 : $resolved, 6);
 
-        $service->setCell($plan, $rowKey, $bucket, $store, Mode::Detail, Auth::id(), enforceGate: true);
+        $service->setCell($plan, $rowKey, $bucket, $store, Mode::Detail, Auth::id(), enforceGate: true, channel: $channel);
     }
 
     /**
@@ -771,6 +790,7 @@ class PlanView extends Component
             'share' => $share,
             'quote' => $quote,
             'showShare' => $this->showShare,
+            'showActual' => $this->showActual,
             'plan' => $plan,
             'rows' => $rows,
             'columns' => $columns,

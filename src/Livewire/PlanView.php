@@ -50,6 +50,10 @@ class PlanView extends Component
     /** Ist/Δ-Ansicht: je Zelle Ist-Wert + Abweichung; im Bearbeiten-Modus wird der IST-Kanal editiert. */
     public bool $showActual = false;
 
+    /** Blattübergreifender Vergleich: uuid eines anderen Plans gleichen Typs (z. B. Ist ↔ Plan);
+     *  je Zelle wird der Vergleichswert + Δ (diese − Vergleich) eingeblendet. '' / null = aus. */
+    public ?string $compareWith = null;
+
     /** Bearbeiten-Modus: nur „open"-Zellen werden zum Tippfeld (Opt-in, Default aus). */
     public bool $editMode = false;
 
@@ -449,7 +453,11 @@ class PlanView extends Component
         $columns = $this->columns($plan);
         $level = $this->viewLevel ?? $this->childLevel($this->container);
         $breadcrumb = $this->breadcrumb();
-        $levelNav = $this->levelNav($breadcrumb, $level);
+        // Bei genau EINEM Jahr den Sprung-Reiter (Halbjahr/Quartal/Monat) schon von „Alle" aus
+        // anbieten — sonst müsste man erst ins Jahr klicken. Bei mehreren Jahren bleibt es beim Drill.
+        $planYears = $this->years($plan);
+        $fallbackYear = count($planYears) === 1 ? $planYears[0] : null;
+        $levelNav = $this->levelNav($breadcrumb, $level, $fallbackYear);
 
         // Roh-Eingaben je Zeile (für "verbindlich verplant"-Berechnung)
         $entriesByRow = [];
@@ -629,6 +637,68 @@ class PlanView extends Component
                     $delta[$rk][$col['bucket']] = ['abs' => $abs, 'pct' => $prev != 0 ? $abs / abs($prev) * 100 : null];
                 }
                 $prev = $v;
+            }
+        }
+
+        // ── Blattübergreifender Vergleich (z. B. Ist ↔ Plan) ─────────────────────────────
+        // Zweiter Plan gleichen Typs; je Zelle Vergleichswert + Δ (diese − Vergleich). Nutzt die
+        // vom Reconciler fertig berechneten Werte des Vergleichsplans (inkl. Formeln). Liegt dort
+        // nur ein gröberer Wert vor (z. B. Jahres-Plan gegen Monats-Ist), wird er gleichmäßig auf
+        // die Spalten heruntergebrochen und mit „≈" markiert.
+        $compareWith = $this->compareWith ?: null;
+        $comparablePlans = ForecastPlan::query()
+            ->where('team_id', $plan->team_id)
+            ->where('plan_type_id', $plan->plan_type_id)
+            ->where('id', '!=', $plan->id)
+            ->orderBy('name')
+            ->get(['uuid', 'name']);
+        $cmpVals = [];
+        $cmpDelta = [];
+        $cmpApprox = [];
+        $cmpName = null;
+        if ($compareWith) {
+            $cmpPlan = ForecastPlan::query()
+                ->where('uuid', $compareWith)
+                ->where('team_id', $plan->team_id)
+                ->where('plan_type_id', $plan->plan_type_id)
+                ->first();
+            if ($cmpPlan) {
+                $cmpName = $cmpPlan->name;
+                try {
+                    $cRows = (new PlanReconciler())->view($cmpPlan)['rows'];
+                    $ncols = max(1, count($columns));
+                    // Vergleichswert einer Zelle: exakte Zelle, sonst Container-Wert ÷ Spalten (≈), sonst keiner.
+                    $cmpAt = function (string $rk, string $b) use ($cRows, $ncols): ?array {
+                        $c = $cRows[$rk]['cells'][$b] ?? null;
+                        if ($c !== null) {
+                            return [(float) $c['value'], false];
+                        }
+                        if ($this->container !== '') {
+                            $pc = $cRows[$rk]['cells'][$this->container] ?? null;
+                            if ($pc !== null) {
+                                return [(float) $pc['value'] / $ncols, true];
+                            }
+                        }
+
+                        return null;
+                    };
+                    foreach ($rows as $rk => $r) {
+                        foreach ($columns as $col) {
+                            $b = $col['bucket'];
+                            $hit = $cmpAt($rk, $b);
+                            if ($hit === null) {
+                                continue;
+                            }
+                            $cmpVals[$rk][$b] = $hit[0];
+                            $cmpApprox[$rk][$b] = $hit[1];
+                            $cmpDelta[$rk][$b] = $colVal($rk, $b) - $hit[0];
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $cmpVals = [];
+                    $cmpDelta = [];
+                    $cmpApprox = [];
+                }
             }
         }
 
@@ -875,6 +945,12 @@ class PlanView extends Component
             'partial' => $partial,
             'delta' => $delta,
             'showDelta' => $this->showDelta,
+            'compareWith' => $compareWith,
+            'comparablePlans' => $comparablePlans,
+            'cmpVals' => $cmpVals,
+            'cmpDelta' => $cmpDelta,
+            'cmpApprox' => $cmpApprox,
+            'cmpName' => $cmpName,
             'share' => $share,
             'quote' => $quote,
             'showShare' => $this->showShare,
@@ -1142,7 +1218,7 @@ class PlanView extends Component
      * @param  list<array{bucket:string,label:string}>  $breadcrumb
      * @return list<array{level:string,label:string,bucket:?string,state:string}>
      */
-    protected function levelNav(array $breadcrumb, string $currentLevel): array
+    protected function levelNav(array $breadcrumb, string $currentLevel, ?string $fallbackYear = null): array
     {
         $levelBucket = [];
         $yearBucket = null;
@@ -1152,17 +1228,19 @@ class PlanView extends Component
                 $yearBucket = $crumb['bucket'];
             }
         }
+        // Ziel-Jahr für die Sprung-Reiter: das Jahr im Pfad, sonst (nur bei Einzeljahr) das fallback.
+        $jumpYear = $yearBucket ?? $fallbackYear;
 
         $nav = [];
         foreach (['year', 'half', 'quarter', 'month', 'day', 'hour'] as $lvl) {
             // Sprung-Reiter: Halbjahr/Quartal/Monat zeigen ALLE Teilperioden des Jahres flach
             // (volle Jahresmatrix, ohne Pflicht-Drill über die gröbere Ebene). Nur wenn ein
             // Jahr im Kontext ist — sonst bleibt es ein normaler Drill-Zustand.
-            if (in_array($lvl, ['half', 'quarter', 'month'], true) && $yearBucket !== null) {
+            if (in_array($lvl, ['half', 'quarter', 'month'], true) && $jumpYear !== null) {
                 $nav[] = [
                     'level' => $lvl,
                     'label' => $this->levelLabelDe($lvl),
-                    'bucket' => $yearBucket,
+                    'bucket' => $jumpYear,
                     'jump' => true,
                     'state' => $currentLevel === $lvl ? 'current' : 'done',
                 ];

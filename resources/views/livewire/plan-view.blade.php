@@ -239,6 +239,18 @@
                                 title="Ist-Werte + Abweichung anzeigen. Im Bearbeiten-Modus werden dann Ist-Werte eingegeben (jede Periode).">
                                 @svg('heroicon-o-scale','w-3.5 h-3.5') Ist / Δ
                             </button>
+                            @if(count($comparablePlans) > 0)
+                                <span class="text-[var(--nx-muted)]/30">·</span>
+                                <label class="inline-flex items-center gap-1 text-xs {{ $compareWith ? 'text-[var(--nx-accent)] font-medium' : 'text-[var(--nx-muted)]' }}" title="Blattübergreifend vergleichen — je Zelle Vergleichswert + Δ (diese − Vergleich)">
+                                    @svg('heroicon-o-arrows-right-left','w-3.5 h-3.5')
+                                    <select wire:model.live="compareWith" class="text-xs rounded-md border border-[var(--nx-line)] bg-[var(--nx-surface)] text-[var(--nx-text)] px-1.5 py-1 max-w-[180px]">
+                                        <option value="">vergleichen mit …</option>
+                                        @foreach($comparablePlans as $cp)
+                                            <option value="{{ $cp->uuid }}">{{ $cp->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                            @endif
                         </div>
                         {{-- Feld-Zustände: sieht es aus wie ein Feld, kannst du tippen — sonst nicht. --}}
                         <div class="flex items-center gap-3 text-[11px] text-[var(--nx-muted)]">
@@ -533,14 +545,26 @@
                                                 // Ist + Δ: nur in der Ist-Ansicht, wo Ist-Daten vorliegen und nicht gerade editiert wird.
                                                 $acCell = $row['cells'][$col['bucket']] ?? null;
                                                 $hasAct = $showActual && ! $cellEditable && $acCell && ($acCell['hasActual'] ?? false);
+                                                $hasCmp = ($compareWith ?? null) && isset($cmpVals[$rowKey][$col['bucket']]);
                                             @endphp
-                                            @if($hasShare || $hasDelta || $hasQuote || $hasAct)
+                                            @if($hasShare || $hasDelta || $hasQuote || $hasAct || $hasCmp)
                                                 <div class="mt-2 pt-1.5 border-t border-dashed border-[var(--nx-line)]/40 flex flex-col items-end gap-1">
                                                     @if($hasAct)
                                                         @php $var = $acCell['variance'] ?? 0; @endphp
                                                         <div class="inline-flex items-center gap-1.5 text-[10px] font-medium" title="Ist − Plan = Abweichung">
                                                             <span class="text-teal-700">Ist {{ $signOf($rowKey, $acCell['actual']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $acCell['actual'])) }}</span>
                                                             <span class="{{ $deltaTone($rowKey, $var) }}">Δ {{ $var > 0 ? '+' : ($var < 0 ? '−' : '') }}{{ $fmtRow($rowKey, abs($var)) }}</span>
+                                                        </div>
+                                                    @endif
+                                                    @if($hasCmp)
+                                                        @php
+                                                            $cVal = $cmpVals[$rowKey][$col['bucket']];
+                                                            $cVar = $cmpDelta[$rowKey][$col['bucket']] ?? 0;
+                                                            $cAx = $cmpApprox[$rowKey][$col['bucket']] ?? false;
+                                                        @endphp
+                                                        <div class="inline-flex items-center gap-1.5 text-[10px] font-medium" title="Vergleich: {{ $cmpName }}{{ $cAx ? ' (grob heruntergebrochen ≈)' : '' }} — Δ = diese − Vergleich">
+                                                            <span class="text-[var(--nx-muted)]">{{ $cAx ? '≈ ' : '' }}{{ $signOf($rowKey, $cVal) }}{{ $fmtRow($rowKey, $magOf($rowKey, $cVal)) }}</span>
+                                                            <span class="{{ $deltaTone($rowKey, $cVar) }}">Δ {{ $cVar > 0 ? '+' : ($cVar < 0 ? '−' : '') }}{{ $fmtRow($rowKey, abs($cVar)) }}</span>
                                                         </div>
                                                     @endif
                                                     @if($hasShare)

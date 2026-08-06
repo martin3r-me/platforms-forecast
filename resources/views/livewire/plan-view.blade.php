@@ -2,6 +2,17 @@
     $fmt = fn ($v) => number_format((float) $v, 0, ',', '.');
     $kpiRows = collect($rows)->take(4);
 
+    // Sektionen (generisch aus den Zeilen-Metadaten) — Basis für Ein-/Ausklappen & Kompakt-Ansicht.
+    // Keine Plan-Typ-Spezifika: was in `section` steht, wird zur klappbaren Gruppe.
+    $sectionCounts = [];
+    foreach ($rows as $rk => $r) {
+        $s = $rowInfo[$rk]['section'] ?? null;
+        if ($s !== null && $s !== '') {
+            $sectionCounts[$s] = ($sectionCounts[$s] ?? 0) + 1;
+        }
+    }
+    $sectionList = array_keys($sectionCounts);
+
     // Vorzeichen / Farbton / Betrag je nach Zeilen-Richtung (bzw. Netto-Wert)
     $signOf = function ($rk, $v) use ($rowInfo) {
         $info = $rowInfo[$rk] ?? [];
@@ -272,8 +283,25 @@
                     @endif
                 </div>
 
-                <div class="overflow-auto max-h-[72vh]">
-                    <table class="min-w-full border-separate border-spacing-0 text-sm">
+                <div x-data="{
+                        dense: localStorage.getItem('fcDense') === '1',
+                        collapsed: (() => { try { return JSON.parse(localStorage.getItem('fcCollapsed:{{ $plan->uuid }}')) || {}; } catch (e) { return {}; } })(),
+                        isC(s) { return !! this.collapsed[s]; },
+                        toggle(s) { this.collapsed[s] = ! this.collapsed[s]; this.persist(); },
+                        setAll(v) { const secs = @js($sectionList); const m = {}; if (v) secs.forEach(s => m[s] = true); this.collapsed = m; this.persist(); },
+                        persist() { localStorage.setItem('fcCollapsed:{{ $plan->uuid }}', JSON.stringify(this.collapsed)); },
+                        toggleDense() { this.dense = ! this.dense; localStorage.setItem('fcDense', this.dense ? '1' : '0'); }
+                     }">
+                    @if(count($sectionList) > 1)
+                        <div class="flex items-center gap-1.5 px-4 py-1.5 border-b border-[var(--nx-line)]/40 text-[11px] text-[var(--nx-muted)]">
+                            <button type="button" @click="setAll(true)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--nx-accent-soft)] transition-colors" title="Alle Gruppen einklappen">@svg('heroicon-o-chevron-double-up','w-3 h-3') Alle einklappen</button>
+                            <button type="button" @click="setAll(false)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--nx-accent-soft)] transition-colors" title="Alle Gruppen ausklappen">@svg('heroicon-o-chevron-double-down','w-3 h-3') Alle ausklappen</button>
+                            <span class="text-[var(--nx-muted)]/30">·</span>
+                            <button type="button" @click="toggleDense()" :class="dense ? 'bg-[var(--nx-accent)]/10 text-[var(--nx-accent)] font-medium' : 'hover:bg-[var(--nx-accent-soft)]'" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors" title="Kompakte Darstellung: geringere Zeilenhöhe, Nebeninfos ausgeblendet">@svg('heroicon-o-bars-3-bottom-left','w-3 h-3') Kompakt</button>
+                        </div>
+                    @endif
+                    <div class="overflow-auto max-h-[72vh]">
+                    <table :class="{ 'fc-dense': dense }" class="min-w-full border-separate border-spacing-0 text-sm">
                         <thead>
                             <tr>
                                 <th class="sticky left-0 top-0 z-30 bg-[var(--nx-surface)] text-left px-4 py-2.5 font-medium text-[11px] uppercase tracking-wider text-[var(--nx-muted)] border-b border-[var(--nx-line)]/60 min-w-[200px]">Zeile</th>
@@ -320,14 +348,19 @@
                                     $rowReplicates = ($rowInfo[$rowKey]['nonAdditive'] ?? false) || (($rowInfo[$rowKey]['timeAgg'] ?? 'flow') !== 'flow');
                                 @endphp
                                 @if($sec && $sec !== $lastSection)
-                                    <tr>
-                                        <td colspan="99" class="sticky left-0 bg-[var(--nx-accent-soft)]/60 px-4 py-1 border-y border-[var(--nx-line)]/50">
-                                            <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--nx-muted)]">{{ $sec }}</span>
+                                    <tr class="fc-sec">
+                                        <td colspan="99" @click="toggle({{ \Illuminate\Support\Js::from($sec) }})" class="sticky left-0 bg-[var(--nx-accent-soft)]/60 hover:bg-[var(--nx-accent-soft)] px-4 py-1 border-y border-[var(--nx-line)]/50 cursor-pointer select-none transition-colors">
+                                            <span class="inline-flex items-center gap-1.5">
+                                                <span x-show="isC({{ \Illuminate\Support\Js::from($sec) }})">@svg('heroicon-o-chevron-right','w-3 h-3 text-[var(--nx-muted)]')</span>
+                                                <span x-show="! isC({{ \Illuminate\Support\Js::from($sec) }})">@svg('heroicon-o-chevron-down','w-3 h-3 text-[var(--nx-muted)]')</span>
+                                                <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--nx-muted)]">{{ $sec }}</span>
+                                                <span x-show="isC({{ \Illuminate\Support\Js::from($sec) }})" x-cloak class="text-[10px] font-medium text-[var(--nx-muted)]/60 tabular-nums">{{ $sectionCounts[$sec] ?? 0 }} Zeilen</span>
+                                            </span>
                                         </td>
                                     </tr>
                                 @endif
                                 @php $lastSection = $sec; @endphp
-                                <tr class="group/row {{ $isF ? 'bg-[var(--nx-hover)]/40' : '' }}">
+                                <tr class="group/row {{ $isF ? 'bg-[var(--nx-hover)]/40' : '' }}"@if($sec) x-show="! isC({{ \Illuminate\Support\Js::from($sec) }})"@endif>
                                     {{-- Zeilen-Kopf --}}
                                     <td class="sticky left-0 z-10 bg-[var(--nx-surface)] {{ $isF ? 'shadow-[inset_0_0_0_100vw_var(--nx-hover)]' : '' }} px-4 py-1.5 border-b border-[var(--nx-line)]/40 transition-colors">
                                         <div class="flex items-center gap-1.5">
@@ -347,7 +380,7 @@
                                                     @svg('heroicon-o-magnifying-glass-plus','w-3 h-3') Detailplan
                                                 </a>
                                             @endif
-                                            <span class="text-[10px] text-[var(--nx-muted)]/55 whitespace-nowrap ml-0.5">@if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else{{ $rowInfo[$rowKey]['direction'] === 'income' ? 'Ertrag +' : ($rowInfo[$rowKey]['direction'] === 'expense' ? 'Aufwand −' : 'Messgröße') }}@endif @if($unitOf($rowKey))· {{ $unitOf($rowKey) }}@endif</span>
+                                            <span class="fc-meta text-[10px] text-[var(--nx-muted)]/55 whitespace-nowrap ml-0.5">@if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else{{ $rowInfo[$rowKey]['direction'] === 'income' ? 'Ertrag +' : ($rowInfo[$rowKey]['direction'] === 'expense' ? 'Aufwand −' : 'Messgröße') }}@endif @if($unitOf($rowKey))· {{ $unitOf($rowKey) }}@endif</span>
                                         </div>
                                     </td>
 
@@ -543,6 +576,7 @@
                             @endif
                         </tbody>
                     </table>
+                    </div>
                 </div>
             </div>
 
@@ -652,6 +686,15 @@
             background: var(--nx-accent); border: 1.5px solid var(--nx-surface); cursor: crosshair; z-index: 3; }
         td.fc-fill-preview { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nx-accent) 55%, transparent);
             background: color-mix(in srgb, var(--nx-accent) 7%, transparent) !important; }
+
+        /* Alpine: erst nach Init anzeigen (verhindert Aufblitzen von Anzahl-Badges/collapsed-State) */
+        [x-cloak] { display: none !important; }
+
+        /* Kompakt-Modus: geringere Zeilenhöhe + Nebeninfos aus → mehr Zeilen auf einen Blick.
+           Generisch (greift für jeden Plan-Typ, keine Zeilen-Spezifika). */
+        table.fc-dense td { padding-top: 3px !important; padding-bottom: 3px !important; }
+        table.fc-dense tr.fc-sec td { padding-top: 1px !important; padding-bottom: 1px !important; }
+        table.fc-dense .fc-meta { display: none; }
     </style>
 
     {{-- Tastatur-Navigation der Eingabe-Felder: Enter/Tab → nächste offene Zelle (Shift = zurück).

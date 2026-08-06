@@ -76,7 +76,7 @@ class PlanView extends Component
         $this->viewLevel = null; // Spalten-Zoom = normaler Drill (kein Halbjahr-Zwang)
     }
 
-    /** Sprung-Reiter: eine Ebene direkt anzeigen (aktuell nur Halbjahr) — ohne Drill-Zwang. */
+    /** Sprung-Reiter: eine Ebene flach über das ganze Jahr anzeigen (Halbjahr/Quartal/Monat) — ohne Drill-Zwang. */
     public function viewLevelJump(string $bucket, string $level): void
     {
         $this->container = $bucket;
@@ -1044,10 +1044,15 @@ class PlanView extends Component
     /** @return list<array{bucket:string,label:string}> */
     protected function columns(ForecastPlan $plan): array
     {
-        if ($this->viewLevel === 'half') {
-            // Sprung-Reiter: H1/H2 des Jahres im Container (kein Drill-Tier).
+        if (in_array($this->viewLevel, ['half', 'quarter', 'month'], true)) {
+            // Sprung-Reiter: alle Teilperioden EINES Jahres flach (kein Pflicht-Drill).
+            // Erlaubt die volle Jahresmatrix (z. B. 12 Monate nebeneinander) ohne Quartals-Umweg.
             $y = substr($this->container !== '' ? $this->container : (string) now()->year, 0, 4);
-            $buckets = ["{$y}-H1", "{$y}-H2"];
+            $buckets = match ($this->viewLevel) {
+                'half' => ["{$y}-H1", "{$y}-H2"],
+                'quarter' => array_map(fn ($q) => "{$y}-Q{$q}", range(1, 4)),
+                'month' => array_map(fn ($m) => sprintf('%s-%02d', $y, $m), range(1, 12)),
+            };
         } else {
             $buckets = $this->childBuckets($this->container, $plan);
         }
@@ -1150,14 +1155,16 @@ class PlanView extends Component
 
         $nav = [];
         foreach (['year', 'half', 'quarter', 'month', 'day', 'hour'] as $lvl) {
-            if ($lvl === 'half') {
-                // Sprung-Reiter (kein Drill-Tier): zeigt H1/H2 des aktuellen Jahres.
+            // Sprung-Reiter: Halbjahr/Quartal/Monat zeigen ALLE Teilperioden des Jahres flach
+            // (volle Jahresmatrix, ohne Pflicht-Drill über die gröbere Ebene). Nur wenn ein
+            // Jahr im Kontext ist — sonst bleibt es ein normaler Drill-Zustand.
+            if (in_array($lvl, ['half', 'quarter', 'month'], true) && $yearBucket !== null) {
                 $nav[] = [
-                    'level' => 'half',
-                    'label' => 'Halbjahr',
+                    'level' => $lvl,
+                    'label' => $this->levelLabelDe($lvl),
                     'bucket' => $yearBucket,
                     'jump' => true,
-                    'state' => $currentLevel === 'half' ? 'current' : ($yearBucket !== null ? 'done' : 'ahead'),
+                    'state' => $currentLevel === $lvl ? 'current' : 'done',
                 ];
 
                 continue;

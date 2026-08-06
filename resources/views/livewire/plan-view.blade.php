@@ -201,7 +201,7 @@
                                             {{ $ln['state'] === 'current'
                                                 ? 'bg-[var(--nx-accent)] text-[var(--nx-on-accent)]'
                                                 : 'text-[var(--nx-muted)] hover:bg-[var(--nx-accent-soft)] hover:text-[var(--nx-text)]' }}"
-                                        @if(($ln['jump'] ?? false)) title="Halbjahre (H1/H2) anzeigen — ohne Pflicht-Zwischenschritt"
+                                        @if(($ln['jump'] ?? false)) title="Ganzes Jahr auf Ebene {{ $ln['label'] }} anzeigen — flach, ohne Zwischenschritt"
                                         @elseif($ln['state'] === 'done') title="Zur Ebene {{ $ln['label'] }} rauszoomen" @endif>
                                         {{ $ln['label'] }}
                                     </button>

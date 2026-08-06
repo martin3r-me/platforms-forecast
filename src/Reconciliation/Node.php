@@ -83,7 +83,42 @@ final class Node
             return $this->stockValue();
         }
 
-        return max($this->estimate ?? 0.0, $this->detailSum()) + $this->plusSum();
+        return $this->baseValue() + $this->plusSum();
+    }
+
+    /**
+     * Basiswert (ohne Plus-Kinder) — vorzeichenerhaltend.
+     *
+     * Die ursprüngliche Invariante max(estimate, detailSum) nahm implizit an,
+     * dass alle Größen ≥ 0 sind, und klemmte damit negative Ist-Werte
+     * (Contra-Konten, Storni, Erstattungen) auf 0. Aufgeschlüsselt nach den
+     * drei realen Fällen bleibt das Verhalten für nicht-negative Planung
+     * identisch und erlaubt zugleich signierte Werte:
+     *   - kein estimate (Zwischenknoten):        Σ Detail-Kinder (signiert)
+     *   - estimate ohne Detail-Kinder (Blatt/Ist): estimate (signiert)
+     *   - estimate MIT Detail-Kindern (Carve-in):  max(estimate, detailSum)
+     */
+    private function baseValue(): float
+    {
+        if ($this->estimate === null) {
+            return $this->detailSum();
+        }
+        if (! $this->hasDetailChildren()) {
+            return $this->estimate;
+        }
+
+        return max($this->estimate, $this->detailSum());
+    }
+
+    private function hasDetailChildren(): bool
+    {
+        foreach ($this->children as [, $mode]) {
+            if ($mode === Mode::Detail) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -114,7 +149,10 @@ final class Node
         if ($this->timeAgg !== 'flow') {
             return 0.0; // Bestände haben keinen zu verteilenden Rest
         }
+        if ($this->estimate === null) {
+            return 0.0; // kein eigener Top-down-Schätzwert → nichts zu verteilen
+        }
 
-        return max(0.0, ($this->estimate ?? 0.0) - $this->detailSum());
+        return max(0.0, $this->estimate - $this->detailSum());
     }
 }

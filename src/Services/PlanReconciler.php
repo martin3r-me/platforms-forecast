@@ -345,8 +345,15 @@ final class PlanReconciler
             // Fortschreibung/Roll-Forward: laufende Summe über die Zeit — Schluss[t] = Schluss[t-1] + Netto-Fluss[t].
             // Der Anfangsbestand ist einfach eine +Quelle, die am ersten Teilzeitraum erfasst wird.
             if ($agg === 'cumulative') {
+                $this->warnAboutNeutralSources($row, $sources, $rowInfo);
                 $rows[$row->key]['cells'] = $this->cumulativeCells($sources);
                 continue;
+            }
+
+            // "net" hat dieselbe Signier-Konvention (neutral = 0, siehe Aggregation::aggregate) —
+            // dieselbe stille Nullung droht hier, warnen statt schweigend falsch zu rechnen.
+            if ($agg === 'net') {
+                $this->warnAboutNeutralSources($row, $sources, $rowInfo);
             }
 
             $cells = [];
@@ -554,6 +561,27 @@ final class PlanReconciler
         }
 
         return [$coarse, round($gDen != 0.0 ? $gNum / $gDen : 0.0, 4)];
+    }
+
+    /**
+     * Warnt, wenn eine Quelle einer "net"/"cumulative"-Formel direction=neutral hat: sowohl
+     * Aggregation::aggregate('net', ...) als auch cumulativeCells() behandeln neutral als
+     * Vorzeichen 0 (die Quelle trägt still NICHT bei, statt signiert einzufließen) — ein
+     * bekannter Footgun bei Bestandszeilen wie Anfangsbestand/Netto-Cashflow, die naheliegend
+     * aber falsch als "neutral" statt income/expense angelegt werden.
+     *
+     * @param  list<array{cells: array, dir: string, weight: float}>  $sources
+     * @param  array<string, array>  $rowInfo
+     */
+    private function warnAboutNeutralSources(object $row, array $sources, array &$rowInfo): void
+    {
+        foreach ($row->sources as $i => $src) {
+            if (($sources[$i]['dir'] ?? null) === 'neutral') {
+                $rowInfo[$row->key]['warnings'][] = "Quelle \"{$src->source_row_key}\" hat direction=neutral — trägt in "
+                    ."\"{$rowInfo[$row->key]['agg']}\" NICHT bei (wird wie 0 behandelt). Direction auf income/expense setzen, "
+                    .'damit der Wert signiert einfließt.';
+            }
+        }
     }
 
     /**

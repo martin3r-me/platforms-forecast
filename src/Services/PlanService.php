@@ -102,15 +102,22 @@ final class PlanService
                 ? ['value' => (float) $existing->value, 'mode' => $this->modeValue($existing->mode)]
                 : ['value' => null, 'mode' => null];
 
+            // mode=plus auf eine bereits bestehende Zelle addiert den Delta-Wert auf den
+            // bisherigen Zellwert, statt ihn zu ersetzen (siehe Tool-Doku forecast.cell.PUT:
+            // "plus kommt zusätzlich obendrauf"). mode=detail ersetzt weiterhin (verfeinert).
+            $storedValue = ($mode === Mode::Plus && $old['value'] !== null)
+                ? $old['value'] + $value
+                : $value;
+
             $entry = ForecastEntry::updateOrCreate(
                 ['plan_id' => $plan->id, 'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel],
-                ['team_id' => $plan->team_id, 'level' => $level->value, 'value' => $value, 'mode' => $mode->value],
+                ['team_id' => $plan->team_id, 'level' => $level->value, 'value' => $storedValue, 'mode' => $mode->value],
             );
 
             $this->recordChange($plan, $userId, 'set', [
                 'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel, 'level' => $level->value,
                 'old_value' => $old['value'], 'old_mode' => $old['mode'],
-                'new_value' => $value, 'new_mode' => $mode->value,
+                'new_value' => $storedValue, 'new_mode' => $mode->value,
             ]);
 
             return $entry;

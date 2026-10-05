@@ -203,6 +203,31 @@ final class PlanService
         });
     }
 
+    /**
+     * Aktualisiert Stammdaten einer Typ-Zeile (label/unit/direction/order) — KEIN Update von
+     * kind/agg/sources, das bliebe strukturell inkonsistent zu bereits erzeugten Plan-Instanzen.
+     * Betrifft die Vorlagen-Zeile selbst; bestehende Plan-Instanzen referenzieren row_key, nicht
+     * die Zeile direkt, daher wirkt die Änderung sofort auf alle Instanzen dieses Typs.
+     */
+    public function updateTypeRow(ForecastRow $row, array $attrs): ForecastRow
+    {
+        if (array_key_exists('label', $attrs) && $attrs['label'] !== null) {
+            $row->label = (string) $attrs['label'];
+        }
+        if (array_key_exists('direction', $attrs) && $attrs['direction'] !== null) {
+            $row->direction = $attrs['direction'];
+        }
+        if (array_key_exists('unit_id', $attrs) && $attrs['unit_id'] !== null) {
+            $row->unit_id = $attrs['unit_id'];
+        }
+        if (array_key_exists('order', $attrs) && $attrs['order'] !== null) {
+            $row->order = (int) $attrs['order'];
+        }
+        $row->save();
+
+        return $row;
+    }
+
     /** Erzeugt einen benannten Snapshot des aktuellen Stands (keine neue Version). */
     public function createSnapshot(ForecastPlan $plan, string $name, ?int $userId = null, ?string $note = null): ForecastSnapshot
     {

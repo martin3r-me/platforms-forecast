@@ -217,6 +217,7 @@ class ForecastServiceProvider extends ServiceProvider
 
             $registry->register(new \Platform\Forecast\Tools\CreatePlanTypeTool());
             $registry->register(new \Platform\Forecast\Tools\DeletePlanTypeTool());
+            $registry->register(new \Platform\Forecast\Tools\UpdatePlanTypeRowTool());
             $registry->register(new \Platform\Forecast\Tools\ListPlanTypesTool());
             $registry->register(new \Platform\Forecast\Tools\CreatePlanTool());
             $registry->register(new \Platform\Forecast\Tools\UpdatePlanTool());

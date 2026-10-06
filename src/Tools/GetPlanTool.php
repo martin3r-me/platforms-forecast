@@ -51,10 +51,15 @@ class GetPlanTool implements ToolContract, ToolMetadataContract
                     return ToolResult::error('Planung nicht gefunden.', 'PLAN_NOT_FOUND');
                 }
 
-                return ToolResult::success((new PlanReconciler())->view($plan));
+                $view = (new PlanReconciler())->view($plan);
+                $view['parent_plan'] = $plan->parentPlan?->uuid;
+                $view['children'] = $plan->children()->orderBy('name')->get()
+                    ->map(fn ($c) => ['uuid' => $c->uuid, 'name' => $c->name])->all();
+
+                return ToolResult::success($view);
             }
 
-            $query = ForecastPlan::where('team_id', $teamId);
+            $query = ForecastPlan::with('parentPlan')->where('team_id', $teamId);
             if (isset($arguments['organization_entity_id'])) {
                 $query->where('organization_entity_id', (int) $arguments['organization_entity_id']);
             }
@@ -66,6 +71,7 @@ class GetPlanTool implements ToolContract, ToolMetadataContract
                 'organization_entity_id' => $p->organization_entity_id,
                 'org_mode' => $p->org_mode?->value,
                 'version' => $p->current_version,
+                'parent_plan' => $p->parentPlan?->uuid,
             ])->all();
 
             return ToolResult::success(['plans' => $plans]);

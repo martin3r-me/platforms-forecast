@@ -21,7 +21,9 @@ class UpdatePlanTool implements ToolContract, ToolMetadataContract
     public function getDescription(): string
     {
         return 'PUT /plans/{plan} – Aktualisiert eine Planung. Parameter: plan (uuid), name?, '
-            .'distribution_policy? (uuid oder key; leerer String = auf Default zurücksetzen).';
+            .'distribution_policy? (uuid oder key; leerer String = auf Default zurücksetzen), '
+            .'parent_plan? (uuid der Konsolidierungs-Elternplanung; leerer String = lösen), '
+            .'organization_entity_id? (Org-Knoten; null = lösen).';
     }
 
     public function getSchema(): array
@@ -32,6 +34,8 @@ class UpdatePlanTool implements ToolContract, ToolMetadataContract
                 'plan' => ['type' => 'string', 'description' => 'uuid der Planung.'],
                 'name' => ['type' => 'string'],
                 'distribution_policy' => ['type' => 'string', 'description' => 'Verteilungsschlüssel (uuid|key), "" = Default.'],
+                'parent_plan' => ['type' => 'string', 'description' => 'uuid der Konsolidierungs-Elternplanung (dieser Plan wird Kind davon), "" = lösen.'],
+                'organization_entity_id' => ['type' => ['integer', 'null'], 'description' => 'Org-Knoten (organization_entities.id), null = lösen.'],
             ],
             'required' => ['plan'],
         ];
@@ -68,12 +72,38 @@ class UpdatePlanTool implements ToolContract, ToolMetadataContract
                 }
             }
 
+            if (array_key_exists('parent_plan', $arguments)) {
+                $ref = (string) $arguments['parent_plan'];
+                if ($ref === '') {
+                    $plan->parent_plan_id = null;
+                } else {
+                    $parent = $this->findPlan($ref, $teamId);
+                    if (! $parent) {
+                        return ToolResult::error('Elternplanung nicht gefunden.', 'PARENT_PLAN_NOT_FOUND');
+                    }
+                    for ($p = $parent; $p; $p = $p->parentPlan) {
+                        if ($p->id === $plan->id) {
+                            return ToolResult::error('Zyklus: Planung kann nicht ihr eigener Vorfahr sein.', 'PARENT_PLAN_CYCLE');
+                        }
+                    }
+                    $plan->parent_plan_id = $parent->id;
+                }
+            }
+
+            if (array_key_exists('organization_entity_id', $arguments)) {
+                $plan->organization_entity_id = $arguments['organization_entity_id'] === null || $arguments['organization_entity_id'] === ''
+                    ? null
+                    : (int) $arguments['organization_entity_id'];
+            }
+
             $plan->save();
 
             return ToolResult::success([
                 'uuid' => $plan->uuid,
                 'name' => $plan->name,
                 'distribution_policy_id' => $plan->distribution_policy_id,
+                'parent_plan_id' => $plan->parent_plan_id,
+                'organization_entity_id' => $plan->organization_entity_id,
             ]);
         } catch (\Throwable $e) {
             return ToolResult::error('Fehler beim Aktualisieren: '.$e->getMessage(), 'EXECUTION_ERROR');

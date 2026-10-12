@@ -24,7 +24,7 @@ class SetCellTool implements ToolContract, ToolMetadataContract
     {
         return 'PUT /cells – Setzt eine Zelle (Wert + Modus) und erzeugt eine neue Version. '
             .'Parameter: plan (uuid), row_key, bucket_key (z.B. "2026-07" oder "2026-07-12"), '
-            .'value (Zahl), mode (detail|plus). WICHTIG: "detail" verfeinert einen bestehenden '
+            .'value (Zahl), mode (detail|plus), optional channel (plan|actual, Default plan = Soll; actual = Ist). WICHTIG: "detail" verfeinert einen bestehenden '
             .'Wert (ändert die Summe NICHT), "plus" kommt zusätzlich obendrauf.';
     }
 
@@ -38,6 +38,7 @@ class SetCellTool implements ToolContract, ToolMetadataContract
                 'bucket_key' => ['type' => 'string', 'description' => 'Jahr "2026", Monat "2026-07", Tag "2026-07-12", Stunde "2026-07-12T14".'],
                 'value' => ['type' => 'number'],
                 'mode' => ['type' => 'string', 'enum' => ['detail', 'plus'], 'description' => 'detail = Teil des bestehenden Werts; plus = zusätzlich.'],
+                'channel' => ['type' => 'string', 'enum' => ['plan', 'actual'], 'description' => 'Wert-Kanal: plan = Soll (Default), actual = Ist. Beide liegen getrennt in derselben Zelle.'],
             ],
             'required' => ['plan', 'row_key', 'bucket_key', 'value', 'mode'],
         ];
@@ -63,22 +64,28 @@ class SetCellTool implements ToolContract, ToolMetadataContract
                 return ToolResult::error('mode muss detail oder plus sein.', 'VALIDATION_ERROR');
             }
 
+            $channel = (string) ($arguments['channel'] ?? 'plan');
+            if (! in_array($channel, ['plan', 'actual'], true)) {
+                return ToolResult::error('channel muss plan oder actual sein.', 'VALIDATION_ERROR');
+            }
+
             $plan = $this->findPlan((string) $arguments['plan'], $teamId);
             if (! $plan) {
                 return ToolResult::error('Planung nicht gefunden.', 'PLAN_NOT_FOUND');
             }
 
             $service = new PlanService();
-            $service->setCell($plan, (string) $arguments['row_key'], (string) $arguments['bucket_key'], (float) $arguments['value'], $mode, $this->userId($context));
+            $service->setCell($plan, (string) $arguments['row_key'], (string) $arguments['bucket_key'], (float) $arguments['value'], $mode, $this->userId($context), false, $channel);
 
             $plan->refresh();
-            $cell = (new PlanReconciler())->cell($plan, (string) $arguments['row_key'], (string) $arguments['bucket_key']);
+            $cell = (new PlanReconciler())->cell($plan, (string) $arguments['row_key'], (string) $arguments['bucket_key'], $channel);
 
             return ToolResult::success([
                 'plan' => $plan->uuid,
                 'row_key' => $arguments['row_key'],
                 'bucket_key' => $arguments['bucket_key'],
                 'mode' => $mode->value,
+                'channel' => $channel,
                 'reconciled' => $cell,   // value + rest an diesem Bucket
                 'version' => $plan->current_version,
             ]);

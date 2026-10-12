@@ -805,8 +805,9 @@ final class PlanReconciler
      *
      * @return array{value: float, rest: float}
      */
-    public function cell(ForecastPlan $plan, string $rowKey, string $bucketKey): array
+    public function cell(ForecastPlan $plan, string $rowKey, string $bucketKey, string $channel = 'plan'): array
     {
+        $this->channel = $channel;
         $entries = $this->entriesByRow($plan)[$rowKey] ?? [];
         $nodes = TimeAxis::build($entries);
         $node = $nodes[$bucketKey] ?? new Node($bucketKey);

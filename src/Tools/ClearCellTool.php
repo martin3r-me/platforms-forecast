@@ -21,7 +21,7 @@ class ClearCellTool implements ToolContract, ToolMetadataContract
     public function getDescription(): string
     {
         return 'DELETE /cells – Leert eine Zelle (entfernt die Eingabe) und erzeugt eine neue Version. '
-            .'Parameter: plan (uuid), row_key, bucket_key.';
+            .'Parameter: plan (uuid), row_key, bucket_key, optional channel (plan|actual, Default plan).';
     }
 
     public function getSchema(): array
@@ -32,6 +32,7 @@ class ClearCellTool implements ToolContract, ToolMetadataContract
                 'plan' => ['type' => 'string'],
                 'row_key' => ['type' => 'string'],
                 'bucket_key' => ['type' => 'string'],
+                'channel' => ['type' => 'string', 'enum' => ['plan', 'actual'], 'description' => 'plan = Soll (Default), actual = Ist.'],
             ],
             'required' => ['plan', 'row_key', 'bucket_key'],
         ];
@@ -44,6 +45,10 @@ class ClearCellTool implements ToolContract, ToolMetadataContract
             if (! $teamId) {
                 return ToolResult::error('Kein Team im Kontext.', 'TEAM_REQUIRED');
             }
+            $channel = (string) ($arguments['channel'] ?? 'plan');
+            if (! in_array($channel, ['plan', 'actual'], true)) {
+                return ToolResult::error('channel muss plan oder actual sein.', 'VALIDATION_ERROR');
+            }
             $plan = $this->findPlan((string) ($arguments['plan'] ?? ''), $teamId);
             if (! $plan) {
                 return ToolResult::error('Planung nicht gefunden.', 'PLAN_NOT_FOUND');
@@ -54,12 +59,14 @@ class ClearCellTool implements ToolContract, ToolMetadataContract
                 (string) $arguments['row_key'],
                 (string) $arguments['bucket_key'],
                 $this->userId($context),
+                $channel,
             );
             $plan->refresh();
 
             return ToolResult::success([
                 'plan' => $plan->uuid,
                 'cleared' => $cleared,
+                'channel' => $channel,
                 'version' => $plan->current_version,
             ]);
         } catch (\Throwable $e) {

@@ -239,6 +239,7 @@ class ForecastServiceProvider extends ServiceProvider
             $registry->register(new \Platform\Forecast\Tools\StructureTool());
             $registry->register(new \Platform\Forecast\Tools\HistoryTool());
             $registry->register(new \Platform\Forecast\Tools\SetCellTool());
+            $registry->register(new \Platform\Forecast\Tools\SetCellsTool());
             $registry->register(new \Platform\Forecast\Tools\ClearCellTool());
             $registry->register(new \Platform\Forecast\Tools\CheckCellEditableTool());
             $registry->register(new \Platform\Forecast\Tools\RollupTool());

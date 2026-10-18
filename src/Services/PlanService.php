@@ -93,6 +93,11 @@ final class PlanService
         }
 
         return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $value, $mode, $userId, $channel) {
+            // Plan-Zeile sperren: serialisiert konkurrierende Schreiber auf DIESELBE Planung,
+            // damit der current_version-Zähler nicht per Read-Modify-Write verloren geht und
+            // die Transaktion (inkl. Entry-Write) nicht durch eine Versions-Kollision zurückrollt.
+            $plan = ForecastPlan::whereKey($plan->getKey())->lockForUpdate()->first() ?? $plan;
+
             $level = TimeLevel::fromKey($bucketKey);
 
             $existing = ForecastEntry::where('plan_id', $plan->id)
@@ -125,6 +130,77 @@ final class PlanService
     }
 
     /**
+     * Setzt VIELE Zellen in EINER Transaktion unter EINER Plan-Sperre — atomar und race-frei.
+     * Für Importe/Paste gedacht: ersetzt viele parallele Einzel-Calls (die den Versionszähler
+     * racen und Writes verlieren konnten). Jede Zelle erzeugt weiterhin einen Change-Log-Eintrag
+     * (= eine Version) in Eingabereihenfolge. Fehlerhafte/gesperrte Zellen werden übersprungen
+     * und gemeldet, der Rest wird geschrieben.
+     *
+     * @param  list<array{row_key:string, bucket_key:string, value:float|int, mode?:string}>  $cells
+     * @return array{written:int, skipped:int, version:int, errors:list<array{row_key:string, bucket_key:string, reason:string}>}
+     */
+    public function setCells(ForecastPlan $plan, array $cells, ?int $userId = null, bool $enforceGate = false, string $channel = 'plan'): array
+    {
+        return DB::transaction(function () use ($plan, $cells, $userId, $enforceGate, $channel) {
+            $plan = ForecastPlan::whereKey($plan->getKey())->lockForUpdate()->first() ?? $plan;
+            $gate = $enforceGate ? new CellEditability() : null;
+
+            $written = 0;
+            $skipped = 0;
+            $errors = [];
+
+            foreach ($cells as $c) {
+                $rowKey = (string) ($c['row_key'] ?? '');
+                $bucketKey = (string) ($c['bucket_key'] ?? '');
+                if ($rowKey === '' || $bucketKey === '' || ! array_key_exists('value', $c) || ! is_numeric($c['value'])) {
+                    $skipped++;
+                    $errors[] = ['row_key' => $rowKey, 'bucket_key' => $bucketKey, 'reason' => 'row_key, bucket_key und numerischer value sind erforderlich.'];
+
+                    continue;
+                }
+
+                $mode = Mode::tryFrom((string) ($c['mode'] ?? 'detail')) ?? Mode::Detail;
+
+                if ($gate) {
+                    $g = $gate->check($plan, $rowKey, $bucketKey, $channel);
+                    if (! $g['editable']) {
+                        $skipped++;
+                        $errors[] = ['row_key' => $rowKey, 'bucket_key' => $bucketKey, 'reason' => $g['reason'] ?? 'Zelle nicht eingebbar.'];
+
+                        continue;
+                    }
+                }
+
+                $level = TimeLevel::fromKey($bucketKey);
+                $existing = ForecastEntry::where('plan_id', $plan->id)
+                    ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->first();
+                $old = $existing
+                    ? ['value' => (float) $existing->value, 'mode' => $this->modeValue($existing->mode)]
+                    : ['value' => null, 'mode' => null];
+
+                $storedValue = ($mode === Mode::Plus && $old['value'] !== null)
+                    ? $old['value'] + (float) $c['value']
+                    : (float) $c['value'];
+
+                ForecastEntry::updateOrCreate(
+                    ['plan_id' => $plan->id, 'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel],
+                    ['team_id' => $plan->team_id, 'level' => $level->value, 'value' => $storedValue, 'mode' => $mode->value],
+                );
+
+                $this->recordChange($plan, $userId, 'set', [
+                    'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel, 'level' => $level->value,
+                    'old_value' => $old['value'], 'old_mode' => $old['mode'],
+                    'new_value' => $storedValue, 'new_mode' => $mode->value,
+                ]);
+
+                $written++;
+            }
+
+            return ['written' => $written, 'skipped' => $skipped, 'version' => (int) $plan->current_version, 'errors' => $errors];
+        });
+    }
+
+    /**
      * Settle: die jüngste Änderung einer Zelle rückgängig machen — aber NUR innerhalb des
      * Fensters (Vertipper vor dem Festschreiben). Setzt den Snapshot auf den Vorzustand zurück
      * und entfernt das Event aus dem Ledger (im Fenster gilt: keine Historie). Danach: gesperrt.
@@ -132,6 +208,8 @@ final class PlanService
     public function undoRecent(ForecastPlan $plan, string $rowKey, string $bucketKey, ?int $userId = null, int $windowSeconds = 35, string $channel = 'plan'): bool
     {
         return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $windowSeconds, $channel) {
+            $plan = ForecastPlan::whereKey($plan->getKey())->lockForUpdate()->first() ?? $plan;
+
             $change = ForecastChange::where('plan_id', $plan->id)
                 ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)
                 ->whereIn('op', ['set', 'clear'])
@@ -166,6 +244,8 @@ final class PlanService
     public function clearCell(ForecastPlan $plan, string $rowKey, string $bucketKey, ?int $userId = null, string $channel = 'plan'): bool
     {
         return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $userId, $channel) {
+            $plan = ForecastPlan::whereKey($plan->getKey())->lockForUpdate()->first() ?? $plan;
+
             $existing = ForecastEntry::where('plan_id', $plan->id)
                 ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->first();
 
@@ -255,6 +335,8 @@ final class PlanService
     public function restoreSnapshot(ForecastPlan $plan, ForecastSnapshot $snapshot, ?int $userId = null): void
     {
         DB::transaction(function () use ($plan, $snapshot, $userId) {
+            $plan = ForecastPlan::whereKey($plan->getKey())->lockForUpdate()->first() ?? $plan;
+
             $plan->entries()->delete();
 
             foreach ((array) $snapshot->payload as $cell) {

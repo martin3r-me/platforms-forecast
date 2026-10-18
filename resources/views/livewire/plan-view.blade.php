@@ -714,16 +714,15 @@
     {{-- Auswahl-Modell (Excel-Optik): Bereichs-Tönung, aktive-Zelle-Rahmen, Grid-Editor --}}
     <style>
         td[data-fc-r] { cursor: cell; user-select: none; }
-        td.fc-sel { background: color-mix(in srgb, var(--nx-accent) 12%, transparent) !important; }
-        td.fc-active { box-shadow: inset 0 0 0 2px var(--nx-accent); z-index: 2; }
         /* Bearbeiten-Modus: tippbare Zellen SICHTBAR als Felder (nicht erst bei Hover) — auf einen
            Blick erkennbar, WO man eintragen kann. data-fc-edit="1" liegt nur an tippbaren Zellen und
            nur im Bearbeiten-Modus; berechnete/gesperrte Zellen bleiben schlicht. Steht VOR den
-           Auswahl-/Fill-Regeln, damit aktive Zelle & Fill-Vorschau weiter gewinnen. */
+           Auswahl-/Fill-Regeln, damit aktive Zelle (fc-active) & Fill-Vorschau weiter gewinnen. */
         td[data-fc-edit="1"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nx-accent) 28%, transparent); border-radius: 5px; }
         td[data-fc-edit="1"]:hover { box-shadow: inset 0 0 0 1.5px var(--nx-accent); }
         td[data-fc-edit="1"][data-fc-spread="1"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, rgb(245 158 11) 45%, transparent); }
-
+        td.fc-sel { background: color-mix(in srgb, var(--nx-accent) 12%, transparent) !important; }
+        td.fc-active { box-shadow: inset 0 0 0 2px var(--nx-accent); z-index: 2; }
         td.fc-active.fc-sel { background: color-mix(in srgb, var(--nx-accent) 6%, transparent) !important; }
         body.fc-selecting { user-select: none; }
         .fc-editor { position: absolute; inset: 3px; width: calc(100% - 6px); box-sizing: border-box;

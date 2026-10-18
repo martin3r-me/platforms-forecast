@@ -258,14 +258,18 @@
                                 </label>
                             @endif
                         </div>
-                        {{-- Feld-Zustände: sieht es aus wie ein Feld, kannst du tippen — sonst nicht. --}}
-                        <div class="flex items-center gap-3 text-[11px] text-[var(--nx-muted)]">
-                            <span class="inline-flex items-center gap-1" title="Offen: hier kannst du (bald) tippen — Periode ist offen"><span class="w-3 h-3 rounded-sm bg-[var(--nx-accent)]/[0.12] ring-1 ring-inset ring-[var(--nx-accent)]/40"></span> offen · tippbar</span>
-                            <span class="inline-flex items-center gap-1" title="Berechnet: ergibt sich aus anderen Zeilen"><span class="text-[9px] font-bold px-1 rounded bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">ƒ</span> berechnet</span>
-                            <span class="inline-flex items-center gap-1" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch"><span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600">↑</span> abgeleitet</span>
-                            <span class="inline-flex items-center gap-1" title="Zu: Periode geschlossen — keine Eingabe">@svg('heroicon-o-lock-closed','w-3 h-3 text-[var(--nx-muted)]/60') zu</span>
-                            <span class="inline-flex items-center gap-1" title="Grob-Eingabe: gröber als die Erfassungs-Ebene — der Wert verteilt sich nach unten. Fluss wird per Schlüssel aufgeteilt, Rate/Bestand konstant repliziert.">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-amber-500/70') grob · verteilt</span>
-                        </div>
+                        {{-- Feld-Zustände hinter einer „?"-Klappe (native <details>): entrauscht die Leiste,
+                             die Erklärung bleibt einen Klick entfernt. Kein JS, kein Funktionsverlust. --}}
+                        <details class="relative text-[11px] text-[var(--nx-muted)] [&_summary::-webkit-details-marker]:hidden">
+                            <summary class="inline-flex items-center gap-1 cursor-pointer list-none select-none px-2 py-1 rounded-md hover:bg-[var(--nx-accent-soft)] transition-colors" title="Was die Feld-Zustände bedeuten">@svg('heroicon-o-question-mark-circle','w-3.5 h-3.5') Feld-Zustände</summary>
+                            <div class="absolute right-0 top-full mt-1 z-20 flex flex-col gap-1.5 whitespace-nowrap bg-[var(--nx-surface)] border border-[var(--nx-line)] rounded-lg shadow-lg shadow-black/5 p-3">
+                                <span class="inline-flex items-center gap-1" title="Offen: hier kannst du tippen — Periode ist offen"><span class="w-3 h-3 rounded-sm bg-[var(--nx-accent)]/[0.12] ring-1 ring-inset ring-[var(--nx-accent)]/40"></span> offen · tippbar</span>
+                                <span class="inline-flex items-center gap-1" title="Berechnet: ergibt sich aus anderen Zeilen"><span class="text-[9px] font-bold px-1 rounded bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">ƒ</span> berechnet</span>
+                                <span class="inline-flex items-center gap-1" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch"><span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600">↑</span> abgeleitet</span>
+                                <span class="inline-flex items-center gap-1" title="Zu: Periode geschlossen — keine Eingabe">@svg('heroicon-o-lock-closed','w-3 h-3 text-[var(--nx-muted)]/60') zu</span>
+                                <span class="inline-flex items-center gap-1" title="Grob-Eingabe: gröber als die Erfassungs-Ebene — der Wert verteilt sich nach unten. Fluss wird per Schlüssel aufgeteilt, Rate/Bestand konstant repliziert.">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-amber-500/70') grob · verteilt</span>
+                            </div>
+                        </details>
                     </div>
 
                     @if($editMode)
@@ -364,6 +368,9 @@
                                 @php
                                     $isF = $rowInfo[$rowKey]['isFormula'] ?? false;
                                     $sec = $rowInfo[$rowKey]['section'] ?? null;
+                                    // Ergebnis-/Meilenstein-Zeile: berechnet UND sektionslos (DB I–IV, Gesamtleistung,
+                                    // EBITDA). Wird betont, damit die Ergebnisse aus den Posten herausstechen.
+                                    $isResult = $isF && ($sec === null || $sec === '');
                                     $gridRowIdx++; // Grid-Zeilenindex (nur Datenzeilen; Sektions-Header zählen nicht)
                                     // Verteilt sich eine Grob-Eingabe durch REPLIZIEREN (Rate/Bestand) statt AUFTEILEN (Fluss)?
                                     // Spiegelt exakt das $constantDown der Anzeige, damit Affordanz und Verhalten übereinstimmen.
@@ -382,15 +389,15 @@
                                     </tr>
                                 @endif
                                 @php $lastSection = $sec; @endphp
-                                <tr class="group/row {{ $isF ? 'bg-[var(--nx-hover)]/40' : '' }}"@if($sec) x-show="! isC({{ \Illuminate\Support\Js::from($sec) }})"@endif>
+                                <tr class="group/row {{ $isResult ? 'bg-[var(--nx-accent-soft)]' : ($isF ? 'bg-[var(--nx-hover)]/40' : '') }}"@if($sec) x-show="! isC({{ \Illuminate\Support\Js::from($sec) }})"@endif>
                                     {{-- Zeilen-Kopf --}}
-                                    <td class="sticky left-0 z-10 bg-[var(--nx-surface)] {{ $isF ? 'shadow-[inset_0_0_0_100vw_var(--nx-hover)]' : '' }} px-4 py-1.5 border-b border-[var(--nx-line)]/40 transition-colors">
+                                    <td class="sticky left-0 z-10 bg-[var(--nx-surface)] {{ $isResult ? 'shadow-[inset_0_0_0_100vw_var(--nx-accent-soft)]' : ($isF ? 'shadow-[inset_0_0_0_100vw_var(--nx-hover)]' : '') }} px-4 py-1.5 border-b border-[var(--nx-line)]/40 transition-colors">
                                         <div class="flex items-center gap-1.5">
                                             @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]" title="{{ ! empty($rowInfo[$rowKey]['expr']) ? 'Ausdruck: '.$rowInfo[$rowKey]['expr'] : 'Berechnet: ergibt sich aus anderen Zeilen — nicht eingebbar' }}">ƒ</span>@endif
                                             @if($isMaster && ! $isF)<span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600 inline-flex items-center gap-0.5" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch — hier nicht direkt eingebbar">↑</span>@endif
                                             @php $ta = $rowInfo[$rowKey]['timeAgg'] ?? 'flow'; @endphp
                                             @if($ta !== 'flow')<span class="text-[9px] font-semibold px-1 rounded bg-sky-500/10 text-sky-600" title="Rollt NICHT als Summe über die Zeit — {{ ['stock'=>'Schlusswert (Quartal = letzter Monat)','stock_open'=>'Eröffnungswert (erster Teilzeitraum)','avg'=>'Durchschnitt über die Teilzeiträume','wavg'=>'gewichteter Ø über die Zeit (Σ Wert×Gewicht ÷ Σ Gewicht)','recompute'=>'Ausdruck je Ebene neu gerechnet'][$ta] ?? $ta }}">{{ ['stock'=>'Bestand','stock_open'=>'Eröffnung','avg'=>'Ø','wavg'=>'Ø gew.','recompute'=>'neu gerechnet'][$ta] ?? $ta }}</span>@endif
-                                            <span class="font-medium text-[var(--nx-text)]">{{ $row['label'] }}</span>
+                                            <span class="{{ $isResult ? 'font-semibold' : 'font-medium' }} text-[var(--nx-text)]">{{ $row['label'] }}</span>
                                             @if(!empty($rowInfo[$rowKey]['warnings']))
                                                 <span class="text-amber-600" title="Konsolidierung ausgelassen — {{ implode(' · ', $rowInfo[$rowKey]['warnings']) }}">@svg('heroicon-o-exclamation-triangle','w-3.5 h-3.5')</span>
                                             @endif
@@ -723,6 +730,12 @@
 
         /* Alpine: erst nach Init anzeigen (verhindert Aufblitzen von Anzahl-Badges/collapsed-State) */
         [x-cloak] { display: none !important; }
+
+        /* Zeilen-Meta ("Ertrag + · €", "Σ Summe · %") erst bei Zeilen-Hover/Fokus zeigen —
+           ruhiges Grundbild, die Info bleibt auf Abruf da (kein Funktionsverlust). */
+        .fc-meta { opacity: 0; transition: opacity .12s ease; }
+        tr:hover .fc-meta, tr:focus-within .fc-meta { opacity: 1; }
+        @media (prefers-reduced-motion: reduce) { .fc-meta { transition: none; } }
 
         /* Kompakt-Modus: geringere Zeilenhöhe + Nebeninfos aus → mehr Zeilen auf einen Blick.
            Generisch (greift für jeden Plan-Typ, keine Zeilen-Spezifika). */

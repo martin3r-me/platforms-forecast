@@ -113,8 +113,17 @@ class ForecastPlan extends Model
      */
     public function resolvedRows(): Collection
     {
-        $typeRows = $this->planType?->rows()->orderBy('order')->get() ?? collect();
-        $instanceRows = $this->rows()->orderBy('order')->get();
+        // Typ-Zeilen (inkl. Quell-Zeilen der Formeln) je Request nur EINMAL pro Plan-Typ laden.
+        // Im Konsolidierungs-Baum teilen alle Knoten denselben Typ — ohne Cache würden die ~94
+        // Zeilen UND ihre `sources` pro Knoten neu geladen (N+1 über alle Baum-Ebenen). Die
+        // Zeilen sind reine Struktur (für alle Instanzen identisch) → geteilte read-only-Nutzung
+        // ist korrekt. Request-scoped (PHP-FPM); unter Octane ggf. nach Struktur-Edit kurz stale.
+        static $typeRowsByType = [];
+        $typeRows = $this->plan_type_id !== null
+            ? ($typeRowsByType[$this->plan_type_id] ??= ($this->planType?->rows()->with('sources')->orderBy('order')->get() ?? collect()))
+            : ($this->planType?->rows()->with('sources')->orderBy('order')->get() ?? collect());
+
+        $instanceRows = $this->rows()->with('sources')->orderBy('order')->get();
 
         $byKey = [];
         foreach ($typeRows as $row) {

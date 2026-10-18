@@ -1,6 +1,12 @@
 @php
     $fmt = fn ($v) => number_format((float) $v, 0, ',', '.');
-    $kpiRows = collect($rows)->take(4);
+    // KPI-Streifen = die Ergebnis-/Meilenstein-Zeilen (sektionslos UND berechnet: DB I–IV, EBITDA,
+    // Gesamtleistung) statt stumpf der ersten 4 Zeilen (die sonst zufällige Kategorie-Zeilen wären).
+    // Fallback auf die ersten 4 Zeilen, falls ein Typ keine sektionslosen Formel-Zeilen hat.
+    $kpiRows = collect($rows)->filter(fn ($r, $k) => ($rowInfo[$k]['section'] ?? null) === null && ($rowInfo[$k]['isFormula'] ?? false))->take(6);
+    if ($kpiRows->isEmpty()) {
+        $kpiRows = collect($rows)->take(4);
+    }
 
     // Sektionen (generisch aus den Zeilen-Metadaten) — Basis für Ein-/Ausklappen & Kompakt-Ansicht.
     // Keine Plan-Typ-Spezifika: was in `section` steht, wird zur klappbaren Gruppe.
@@ -351,6 +357,10 @@
                         <tbody>
                             @php $lastSection = '__init__'; $gridRowIdx = -1; @endphp
                             @foreach($rows as $rowKey => $row)
+                                {{-- Faktor-Zeilen (Anteile/Quoten) am Ordner ausblenden: dort sind sie nie eingebbar
+                                     und zeigen 0 % — reines Rauschen (jede zweite Zeile leer). Am Blatt bleiben sie
+                                     als Eingabe-Zeilen sichtbar; die Quote bleibt überall per „Anteil %" einblendbar. --}}
+                                @continue(($rowInfo[$rowKey]['isFactor'] ?? false) && $isMaster)
                                 @php
                                     $isF = $rowInfo[$rowKey]['isFormula'] ?? false;
                                     $sec = $rowInfo[$rowKey]['section'] ?? null;

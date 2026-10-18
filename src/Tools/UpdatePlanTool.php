@@ -21,6 +21,8 @@ class UpdatePlanTool implements ToolContract, ToolMetadataContract
     public function getDescription(): string
     {
         return 'PUT /plans/{plan} – Aktualisiert eine Planung. Parameter: plan (uuid), name?, '
+            .'period_start? / period_end? (YYYY-MM-DD — Planungszeitraum; z. B. period_end=2027-12-31, '
+            .'um den Horizont auf ein weiteres Jahr zu verlängern), base_level? (year|month|day|hour), '
             .'distribution_policy? (uuid oder key; leerer String = auf Default zurücksetzen), '
             .'parent_plan? (uuid der Konsolidierungs-Elternplanung; leerer String = lösen), '
             .'organization_entity_id? (Org-Knoten; null = lösen).';
@@ -33,6 +35,9 @@ class UpdatePlanTool implements ToolContract, ToolMetadataContract
             'properties' => [
                 'plan' => ['type' => 'string', 'description' => 'uuid der Planung.'],
                 'name' => ['type' => 'string'],
+                'period_start' => ['type' => 'string', 'description' => 'YYYY-MM-DD — Beginn des Planungszeitraums.'],
+                'period_end' => ['type' => 'string', 'description' => 'YYYY-MM-DD — Ende des Planungszeitraums (z. B. 2027-12-31, um ein weiteres Jahr aufzunehmen).'],
+                'base_level' => ['type' => 'string', 'enum' => ['year', 'month', 'day', 'hour'], 'description' => 'Standard-Zeitebene der Erfassung.'],
                 'distribution_policy' => ['type' => 'string', 'description' => 'Verteilungsschlüssel (uuid|key), "" = Default.'],
                 'parent_plan' => ['type' => 'string', 'description' => 'uuid der Konsolidierungs-Elternplanung (dieser Plan wird Kind davon), "" = lösen.'],
                 'organization_entity_id' => ['type' => ['integer', 'null'], 'description' => 'Org-Knoten (organization_entities.id), null = lösen.'],
@@ -96,11 +101,37 @@ class UpdatePlanTool implements ToolContract, ToolMetadataContract
                     : (int) $arguments['organization_entity_id'];
             }
 
+            // Planungszeitraum / Erfassungsebene aktualisieren — z. B. Horizont auf ein weiteres
+            // Jahr verlängern (period_end=2027-12-31). Nur bei gültiger Angabe; Datumsformat YYYY-MM-DD.
+            foreach (['period_start', 'period_end'] as $pk) {
+                if (array_key_exists($pk, $arguments) && $arguments[$pk] !== null && $arguments[$pk] !== '') {
+                    $d = \DateTime::createFromFormat('Y-m-d', (string) $arguments[$pk]);
+                    if (! $d || $d->format('Y-m-d') !== (string) $arguments[$pk]) {
+                        return ToolResult::error("{$pk} muss im Format YYYY-MM-DD sein.", 'VALIDATION_ERROR');
+                    }
+                    $plan->{$pk} = (string) $arguments[$pk];
+                }
+            }
+            if (array_key_exists('base_level', $arguments) && $arguments['base_level'] !== '') {
+                $bl = (string) $arguments['base_level'];
+                if (! in_array($bl, ['year', 'month', 'day', 'hour'], true)) {
+                    return ToolResult::error('base_level muss year|month|day|hour sein.', 'VALIDATION_ERROR');
+                }
+                $plan->base_level = $bl;
+            }
+
+            if ($plan->period_start && $plan->period_end && $plan->period_end->lt($plan->period_start)) {
+                return ToolResult::error('period_end darf nicht vor period_start liegen.', 'VALIDATION_ERROR');
+            }
+
             $plan->save();
 
             return ToolResult::success([
                 'uuid' => $plan->uuid,
                 'name' => $plan->name,
+                'base_level' => $plan->base_level,
+                'period_start' => $plan->period_start?->toDateString(),
+                'period_end' => $plan->period_end?->toDateString(),
                 'distribution_policy_id' => $plan->distribution_policy_id,
                 'parent_plan_id' => $plan->parent_plan_id,
                 'organization_entity_id' => $plan->organization_entity_id,

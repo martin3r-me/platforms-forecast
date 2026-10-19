@@ -26,7 +26,11 @@
             return $v < 0 ? '−' : ($v > 0 ? '+' : '');
         }
         $d = $info['direction'] ?? 'neutral';
-        return $d === 'income' ? '+' : ($d === 'expense' ? '−' : '');
+        if ($d === 'expense') return '−';
+        if ($d === 'neutral') return '';
+        // income: Vorzeichen folgt dem WERT — negative Summen (z. B. „Sonstige Umsätze gesamt“ < 0)
+        // zeigen „−“ statt fälschlich „+“ vor einer negativen Zahl.
+        return $v < 0 ? '−' : '+';
     };
     $toneOf = function ($rk, $v) use ($rowInfo) {
         $info = $rowInfo[$rk] ?? [];
@@ -54,11 +58,17 @@
     // FAKTOR: gespeichert 0–1, angezeigt ×100 als %. %-Zeilen 1 Nachkommastelle, sonst ganzzahlig.
     $fmtRow = function ($rk, $v) use ($rowInfo, $fmt) {
         $info = $rowInfo[$rk] ?? [];
+        $v = abs((float) $v); // nur Betrag — das Vorzeichen liefert ausschließlich signOf (kein doppeltes „−“)
         if ($info['isFactor'] ?? false) {
-            return number_format((float) $v * 100, 1, ',', '.');
+            return number_format($v * 100, 1, ',', '.');
         }
-        return ($info['unit'] ?? '') === '%' ? number_format((float) $v, 1, ',', '.') : $fmt($v);
+        return ($info['unit'] ?? '') === '%' ? number_format($v, 1, ',', '.') : $fmt($v);
     };
+
+    // Zeit-Ebenen-Rang (gröber → feiner). Faktor-Zeilen (Anteile/Quoten) summieren sich auf Ebenen
+    // GRÖBER als die Erfassungs-Ebene sinnlos auf (12 × 95 % = 1.140 %) → dort „·“ statt Zahl.
+    $levelRank = ['year' => 0, 'half' => 1, 'quarter' => 2, 'month' => 3, 'day' => 4, 'hour' => 5];
+    $baseRank = $levelRank[$plan->base_level] ?? 3;
     // Ordner-Modell: eine Planung BÜNDELT untergeordnete (= Ordner) ODER erfasst Zahlen (= Blatt).
     // Ordner/Blatt ist blickpunkt-unabhängig (ein Ordner bleibt Ordner, egal von wo man draufschaut).
     // Drill-down (ein Feld hat eine eigene Planung dahinter) ist EXTRA und hängt an der Zeile.
@@ -464,6 +474,9 @@
                                             // Grid-Editor: editierbar = offen/spread/ist im Bearbeiten-Modus.
                                             $cellEditable = $editMode && in_array($cellState, ['open', 'spread', 'actual'], true);
                                             $isFu = $rowInfo[$rowKey]['isFactor'] ?? false;
+                                            // Faktor-Zeile (Anteil/Quote) auf einer Ebene GRÖBER als die Erfassung:
+                                            // der %-Wert wäre aufsummiert (12 × 95 % = 1.140 %) → irreführend, daher „·“.
+                                            $colCoarse = $isFu && (($levelRank[\Platform\Forecast\Enums\TimeLevel::fromKey($bkt)->value] ?? 99) < $baseRank);
                                             $cellObj = $isF ? null : ($row['cells'][$col['bucket']] ?? null);
                                             // Prefill: im Ist-Modus der Ist-Wert, sonst der erfasste Plan-Wert.
                                             $pfSrc = ($showActual && $editMode)
@@ -510,7 +523,10 @@
                                                     @svg('heroicon-o-exclamation-triangle','w-3 h-3')
                                                 </span>
                                             @endif
-                                            @if($isF)
+                                            @if($isFu && $colCoarse)
+                                                {{-- Faktor auf gröberer Ebene: aufsummierter %-Wert wäre irreführend → „·“. --}}
+                                                <span class="text-[var(--nx-muted)]/40" title="Anteil/Quote ist nur auf der Erfassungs-Ebene (Monat) aussagekräftig — gröber summiert sich der Prozentwert auf.">·</span>
+                                            @elseif($isF)
                                                 {{-- Formula: berechnet, read-only --}}
                                                 @php $fv = $formulaCells[$rowKey][$col['bucket']] ?? 0; @endphp
                                                 @if($fv != 0)

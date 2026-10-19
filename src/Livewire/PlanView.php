@@ -66,6 +66,10 @@ class PlanView extends Component
     /** Zählt jede Speicherung hoch → erzwingt Neustart des Client-Countdowns. */
     public int $editNonce = 0;
 
+    /** Lazy-Load: erster Seitenaufruf rendert nur ein leichtes Skelett (ohne die teure
+     *  Baum-Konsolidierung) → sofort sichtbar. wire:init="loadGrid" lädt das echte Grid nach. */
+    public bool $ready = false;
+
     public function mount(string $uuid): void
     {
         $this->uuid = $uuid;
@@ -425,9 +429,23 @@ class PlanView extends Component
             ->firstOrFail();
     }
 
+    public function loadGrid(): void
+    {
+        $this->ready = true;
+    }
+
     public function render()
     {
         $plan = $this->plan();
+
+        // Lazy: beim ersten Laden nur ein Skelett (schnell, KEINE Konsolidierung über den Baum).
+        // wire:init="loadGrid" stößt die eigentliche Berechnung als Folge-Request an → das schwere
+        // Grid erscheint danach, ohne den ersten Seitenaufbau zu blockieren.
+        if (! $this->ready) {
+            return view('forecast::livewire.plan-view-skeleton', ['plan' => $plan])
+                ->layout('platform::layouts.app');
+        }
+
         $view = (new PlanReconciler())->view($plan);
         $rows = $view['rows'];
         $rowInfo = $view['rowInfo'];

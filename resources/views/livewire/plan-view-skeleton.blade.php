@@ -14,7 +14,7 @@
         ]" />
     </x-slot>
 
-    <x-ui-page-container width="full">
+    <div class="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden bg-[color:var(--nx-surface)] text-[color:var(--nx-text)] px-5 py-4">
         <div wire:init="loadGrid" class="space-y-5" aria-busy="true" aria-label="Planung wird geladen">
 
             <div class="space-y-5 animate-pulse motion-reduce:animate-none">
@@ -62,5 +62,5 @@
             </p>
 
         </div>
-    </x-ui-page-container>
+    </div>
 </x-ui-page>

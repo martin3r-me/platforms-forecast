@@ -109,64 +109,60 @@
 
     {{-- Volle Fensterbreite (bewusste Ausnahme ggü. anderen Modulen): die dichte Monatsmatrix
          braucht alle Monate + Summe auf einen Blick, nicht im 1200px-Korsett. --}}
-    <x-ui-page-container width="full">
-        <div class="space-y-4">
+    {{-- App-Shell: Kopf fix (shrink-0), nur das Grid scrollt. Behebt die zwei Scrollbalken
+         und die über-100%-hohe Seite — Kopf + Grid passen jetzt in den Viewport. --}}
+    <div class="flex-1 min-h-0 min-w-0 flex flex-col bg-[color:var(--nx-surface)] text-[color:var(--nx-text)]">
 
-            {{-- ═══════════ Kontext-Kopf ═══════════ --}}
-            <div class="space-y-4">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div class="min-w-0">
-                        <h1 class="text-xl font-semibold tracking-tight text-[var(--nx-text)]">{{ $plan->name }}</h1>
-                        <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold {{ $roleText }} {{ $roleBg }}" title="{{ $roleTip }}">
-                                @svg($roleIcon,'w-3 h-3') {{ $roleLabel }}
-                            </span>
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
-                                @svg('heroicon-o-squares-2x2','w-3 h-3') {{ $plan->planType?->name }}
-                            </span>
-                            @if($plan->organization_entity_id)
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
-                                    @svg('heroicon-o-building-office-2','w-3 h-3') Knoten #{{ $plan->organization_entity_id }}
-                                </span>
-                            @endif
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
-                                @svg('heroicon-o-clock','w-3 h-3') Version {{ $plan->current_version }}
-                            </span>
-                            @if($editMode)
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent)]/10 text-[var(--nx-accent)] font-medium">
-                                    @svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten
-                                </span>
-                            @else
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
-                                    @svg('heroicon-o-eye','w-3 h-3') Nur Ansicht
-                                </span>
-                            @endif
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]" title="Vorlauf: öffnet X Tage vor Periodenstart · Nachlauf: bleibt Y Tage nach Periodenende offen">
-                                @svg('heroicon-o-lock-closed','w-3 h-3') Vorlauf {{ $lock['lead_days'] }} T · Nachlauf {{ $lock['grace_days'] }} T
-                            </span>
-                        </div>
-                        {{-- Nette Ein-Zeilen-Erklärung, was diese Planung ist --}}
-                        @php
-                            $folderPart = $isFolder
-                                ? ($subMasterCount > 0
-                                    ? "Ein Ordner: bündelt {$childCount} Planungen ({$leafCount} Blätter mit Zahlen insgesamt) — die Zahlen unten sind ihre Summe."
-                                    : "Ein Ordner: bündelt {$childCount} Blätter — die Zahlen unten sind ihre Summe.")
-                                : "Ein Blatt: hier werden die Zahlen erfasst.";
-                            $locPart = $parentPlan ? " Liegt im Ordner „{$parentPlan->name}“." : "";
-                            $drillPart = (! $isFolder && count($usedIn)) ? " Speist per Drill-down eine Zeile in „".implode('“, „', $usedIn)."“." : "";
-                            $explain = $folderPart.$locPart.$drillPart;
-                        @endphp
-                        <p class="mt-2 flex items-start gap-1.5 text-xs text-[var(--nx-muted)] max-w-2xl">
-                            @svg('heroicon-o-information-circle','w-3.5 h-3.5 mt-px shrink-0 opacity-60')
-                            <span>{{ $explain }}</span>
-                        </p>
-                    </div>
-                </div>
+        @php
+            $folderPart = $isFolder
+                ? ($subMasterCount > 0
+                    ? "Ein Ordner: bündelt {$childCount} Planungen ({$leafCount} Blätter mit Zahlen insgesamt) — die Zahlen unten sind ihre Summe."
+                    : "Ein Ordner: bündelt {$childCount} Blätter — die Zahlen unten sind ihre Summe.")
+                : "Ein Blatt: hier werden die Zahlen erfasst.";
+            $locPart = $parentPlan ? " Liegt im Ordner „{$parentPlan->name}“." : "";
+            $drillPart = (! $isFolder && count($usedIn)) ? " Speist per Drill-down eine Zeile in „".implode('“, „', $usedIn)."“." : "";
+            $explain = $folderPart.$locPart.$drillPart;
+        @endphp
+
+        {{-- ═══════════ Konsolidierter Kopf ═══════════ --}}
+        <header class="shrink-0 px-5 pt-3 pb-2.5 border-b border-[var(--nx-line)]/60">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
+                <h1 class="text-[15px] font-semibold tracking-tight text-[var(--nx-text)] truncate max-w-[24rem] mr-1">{{ $plan->name }}</h1>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold {{ $roleText }} {{ $roleBg }}" title="{{ $roleTip }}">
+                    @svg($roleIcon,'w-3 h-3') {{ $roleLabel }}
+                </span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
+                    @svg('heroicon-o-squares-2x2','w-3 h-3') {{ $plan->planType?->name }}
+                </span>
+                @if($plan->organization_entity_id)
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
+                        @svg('heroicon-o-building-office-2','w-3 h-3') Knoten #{{ $plan->organization_entity_id }}
+                    </span>
+                @endif
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
+                    @svg('heroicon-o-clock','w-3 h-3') Version {{ $plan->current_version }}
+                </span>
+                @if($editMode)
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent)]/10 text-[var(--nx-accent)] font-medium">
+                        @svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten
+                    </span>
+                @else
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
+                        @svg('heroicon-o-eye','w-3 h-3') Nur Ansicht
+                    </span>
+                @endif
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]" title="Vorlauf: öffnet X Tage vor Periodenstart · Nachlauf: bleibt Y Tage nach Periodenende offen">
+                    @svg('heroicon-o-lock-closed','w-3 h-3') Vorlauf {{ $lock['lead_days'] }} T · Nachlauf {{ $lock['grace_days'] }} T
+                </span>
+                {{-- Erklärung als Tooltip statt eigener Zeile — spart eine Kopfzeile --}}
+                <span class="inline-flex items-center text-[var(--nx-muted)]/70 cursor-help" tabindex="0" title="{{ $explain }}">
+                    @svg('heroicon-o-information-circle','w-4 h-4')
+                </span>
             </div>
 
-            {{-- ═══════════ KPI-Streifen (kompakt: Label + Wert je Kennzahl in einer Zeile) ═══════════ --}}
+            {{-- ═══ KPI-Streifen: Ergebnis-/Meilenstein-Zeilen kompakt in einer Zeile ═══ --}}
             @if($kpiRows->isNotEmpty())
-                <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1.5 -mt-1 px-0.5">
+                <div class="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1">
                     @foreach($kpiRows as $rowKey => $row)
                         @php
                             $t = $meta[$rowKey] ?? ['value' => 0, 'rest' => 0, 'committed' => 0, 'implied' => false];
@@ -175,7 +171,7 @@
                         @endphp
                         <div class="inline-flex items-baseline gap-1.5 min-w-0">
                             <span class="text-[11px] font-medium text-[var(--nx-muted)] truncate max-w-[11rem]">{{ $row['label'] }}</span>
-                            <span class="text-lg font-semibold tracking-tight tabular-nums {{ $naMaster ? 'text-[var(--nx-muted)]/40' : $toneOf($rowKey, $t['value']) }}">
+                            <span class="text-[15px] font-semibold tracking-tight tabular-nums {{ $naMaster ? 'text-[var(--nx-muted)]/40' : $toneOf($rowKey, $t['value']) }}">
                                 @if($naMaster)–@else{{ $t['implied'] ? '≈' : '' }}{{ $signOf($rowKey, $t['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $t['value'])) }}<span class="text-[11px] font-normal text-[var(--nx-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span>@endif
                             </span>
                             @if(! $isF && ! $isMaster && $t['rest'] > 0)
@@ -185,11 +181,12 @@
                     @endforeach
                 </div>
             @endif
+        </header>
 
-            {{-- ═══════════ Grid ═══════════ --}}
-            <div class="rounded-2xl border border-[var(--nx-line)]/60 bg-[var(--nx-surface)] overflow-hidden">
+            {{-- ═══════════ Grid (füllt die Resthöhe, einziger Scroller) ═══════════ --}}
+            <div class="flex-1 min-h-0 min-w-0 flex flex-col bg-[var(--nx-surface)]">
                 {{-- ═══ Kopf-Leiste der Tabelle = Steuerzentrale (liegt über der Scroll-Box, also immer sichtbar) ═══ --}}
-                <div class="border-b border-[var(--nx-line)]/50 bg-[var(--nx-hover)]">
+                <div class="shrink-0 border-b border-[var(--nx-line)]/50 bg-[var(--nx-hover)]">
                     {{-- Tier 1: Zeit-Navigation der Tabelle — Zoom-Pfad (raus) links, Ebenen-Sprung rechts --}}
                     <div class="flex flex-wrap items-center justify-between gap-3 px-4 pt-2.5 pb-1.5">
                         <nav class="flex items-center gap-0.5 flex-wrap min-w-0" aria-label="Zeit-Navigation">
@@ -325,16 +322,16 @@
                         setAll(v) { const secs = @js($sectionList); const m = {}; if (v) secs.forEach(s => m[s] = true); this.collapsed = m; this.persist(); },
                         persist() { localStorage.setItem('fcCollapsed:{{ $plan->uuid }}', JSON.stringify(this.collapsed)); },
                         toggleDense() { this.dense = ! this.dense; localStorage.setItem('fcDense', this.dense ? '1' : '0'); }
-                     }">
+                     }" class="flex-1 min-h-0 min-w-0 flex flex-col">
                     @if(count($sectionList) > 1)
-                        <div class="flex items-center gap-1.5 px-4 py-1.5 border-b border-[var(--nx-line)]/40 text-[11px] text-[var(--nx-muted)]">
+                        <div class="shrink-0 flex items-center gap-1.5 px-4 py-1.5 border-b border-[var(--nx-line)]/40 text-[11px] text-[var(--nx-muted)]">
                             <button type="button" @click="setAll(true)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--nx-accent-soft)] transition-colors" title="Alle Gruppen einklappen">@svg('heroicon-o-chevron-double-up','w-3 h-3') Alle einklappen</button>
                             <button type="button" @click="setAll(false)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--nx-accent-soft)] transition-colors" title="Alle Gruppen ausklappen">@svg('heroicon-o-chevron-double-down','w-3 h-3') Alle ausklappen</button>
                             <span class="text-[var(--nx-muted)]/30">·</span>
                             <button type="button" @click="toggleDense()" :class="dense ? 'bg-[var(--nx-accent)]/10 text-[var(--nx-accent)] font-medium' : 'hover:bg-[var(--nx-accent-soft)]'" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors" title="Kompakte Darstellung: geringere Zeilenhöhe, Nebeninfos ausgeblendet">@svg('heroicon-o-bars-3-bottom-left','w-3 h-3') Kompakt</button>
                         </div>
                     @endif
-                    <div class="overflow-auto max-h-[72vh]">
+                    <div class="flex-1 min-h-0 overflow-auto">
                     <table :class="{ 'fc-dense': dense }" class="min-w-full border-separate border-spacing-0 text-sm">
                         <thead>
                             <tr>
@@ -639,8 +636,7 @@
                 </div>
             </div>
 
-        </div>
-    </x-ui-page-container>
+    </div>
 
     {{-- ═══════════ Innenliegende Sidebar: „Wo bin ich" — Position im Gesamtkontext ═══════════ --}}
     <x-slot name="sidebar">

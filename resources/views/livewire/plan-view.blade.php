@@ -324,16 +324,16 @@
                     <table :class="{ 'fc-dense': dense }" class="min-w-full border-separate border-spacing-0 text-sm">
                         <thead>
                             <tr>
-                                <th class="sticky left-0 top-0 z-30 bg-[var(--nx-surface)] text-left px-4 py-2.5 font-medium text-[11px] uppercase tracking-wider text-[var(--nx-muted)] border-b border-[var(--nx-line)]/60 min-w-[200px]">Zeile</th>
+                                <th class="sticky left-0 top-0 z-30 bg-[var(--nx-surface)] text-left px-3 py-2 font-medium text-[11px] uppercase tracking-wider text-[var(--nx-muted)] border-b border-[var(--nx-line)]/60 min-w-[180px]">Zeile</th>
                                 @if($zoomed)
-                                    <th class="sticky top-0 z-20 bg-[var(--nx-surface)] text-right px-4 py-2.5 border-b border-r border-[var(--nx-line)]/60 whitespace-nowrap min-w-[120px]">
+                                    <th class="sticky top-0 z-20 bg-[var(--nx-surface)] text-right px-3 py-2 border-b border-r border-[var(--nx-line)]/60 whitespace-nowrap min-w-[104px]">
                                         <div class="text-xs font-semibold text-[var(--nx-text)]">{{ $breadcrumb[count($breadcrumb)-1]['label'] }}</div>
                                         <div class="text-[10px] font-normal text-[var(--nx-muted)]">Ebene gesamt</div>
                                     </th>
                                 @endif
                                 @foreach($columns as $col)
                                     @php $st = $colStatus[$col['bucket']] ?? ['state' => 'mixed', 'days' => null]; @endphp
-                                    <th class="group/col sticky top-0 z-20 bg-[var(--nx-surface)] text-right px-3 py-2.5 border-b border-[var(--nx-line)]/60 whitespace-nowrap min-w-[96px]
+                                    <th class="group/col sticky top-0 z-20 bg-[var(--nx-surface)] text-right px-2 py-2 border-b border-[var(--nx-line)]/60 whitespace-nowrap min-w-[84px]
                                         {{ $canZoom ? 'cursor-pointer hover:bg-[var(--nx-accent)]/[0.06] transition-colors' : '' }}
                                         {{ $st['state'] === 'closed' ? 'opacity-60' : '' }}"
                                         @if($canZoom) wire:click="zoom('{{ $col['bucket'] }}')" @endif>
@@ -376,7 +376,7 @@
                                 @endphp
                                 @if($sec && $sec !== $lastSection)
                                     <tr class="fc-sec">
-                                        <td colspan="99" @click="toggle({{ \Illuminate\Support\Js::from($sec) }})" class="sticky left-0 bg-[var(--nx-accent-soft)]/60 hover:bg-[var(--nx-accent-soft)] px-4 py-1 border-y border-[var(--nx-line)]/50 cursor-pointer select-none transition-colors">
+                                        <td colspan="99" @click="toggle({{ \Illuminate\Support\Js::from($sec) }})" class="sticky left-0 bg-[var(--nx-accent-soft)]/60 hover:bg-[var(--nx-accent-soft)] px-3 py-0.5 border-y border-[var(--nx-line)]/50 cursor-pointer select-none transition-colors">
                                             <span class="inline-flex items-center gap-1.5">
                                                 <span x-show="isC({{ \Illuminate\Support\Js::from($sec) }})">@svg('heroicon-o-chevron-right','w-3 h-3 text-[var(--nx-muted)]')</span>
                                                 <span x-show="! isC({{ \Illuminate\Support\Js::from($sec) }})">@svg('heroicon-o-chevron-down','w-3 h-3 text-[var(--nx-muted)]')</span>
@@ -389,7 +389,7 @@
                                 @php $lastSection = $sec; @endphp
                                 <tr class="group/row {{ $isResult ? 'fc-result bg-[var(--nx-accent-soft)]' : ($isF ? 'bg-[var(--nx-hover)]/40' : '') }}"@if($sec) x-show="! isC({{ \Illuminate\Support\Js::from($sec) }})"@endif>
                                     {{-- Zeilen-Kopf --}}
-                                    <td class="sticky left-0 z-10 bg-[var(--nx-surface)] {{ $isResult ? 'shadow-[inset_0_0_0_100vw_var(--nx-accent-soft)]' : ($isF ? 'shadow-[inset_0_0_0_100vw_var(--nx-hover)]' : '') }} px-4 py-1.5 border-b border-[var(--nx-line)]/40 transition-colors">
+                                    <td class="sticky left-0 z-10 bg-[var(--nx-surface)] {{ $isResult ? 'shadow-[inset_0_0_0_100vw_var(--nx-accent-soft)]' : ($isF ? 'shadow-[inset_0_0_0_100vw_var(--nx-hover)]' : '') }} px-3 py-1 border-b border-[var(--nx-line)]/40 transition-colors">
                                         <div class="flex items-center gap-1.5">
                                             @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]" title="{{ ! empty($rowInfo[$rowKey]['expr']) ? 'Ausdruck: '.$rowInfo[$rowKey]['expr'] : 'Berechnet: ergibt sich aus anderen Zeilen — nicht eingebbar' }}">ƒ</span>@endif
                                             @if($isMaster && ! $isF)<span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600 inline-flex items-center gap-0.5" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch — hier nicht direkt eingebbar">↑</span>@endif
@@ -423,7 +423,7 @@
                                             $sIsFactor = (($rowInfo[$rowKey]['isFactor'] ?? false) || ($rowInfo[$rowKey]['nonAdditive'] ?? false))
                                                 && ! in_array($rowInfo[$rowKey]['timeAgg'] ?? 'flow', ['recompute', 'wavg'], true);
                                         @endphp
-                                        <td class="text-right px-4 py-1.5 border-b border-r border-[var(--nx-line)]/40 bg-[var(--nx-accent)]/[0.04] align-top">
+                                        <td class="text-right px-3 py-1 border-b border-r border-[var(--nx-line)]/40 bg-[var(--nx-accent)]/[0.04] align-top">
                                             @if($sIsFactor)
                                                 <span class="text-[var(--nx-muted)]/40" title="Anteil/Quote summiert sich über die Perioden nicht sinnvoll — nur je Erfassungs-Periode (z. B. Monat) aussagekräftig.">·</span>
                                             @else
@@ -488,7 +488,7 @@
                                             $pfRaw = $pfSrc === null ? ''
                                                 : rtrim(rtrim(number_format($isFu ? $pfSrc * 100 : (float) $pfSrc, 4, '.', ''), '0'), '.');
                                         @endphp
-                                        <td class="relative text-right px-3 py-1.5 border-b border-[var(--nx-line)]/40 whitespace-nowrap align-top transition-colors
+                                        <td class="relative text-right px-2 py-1 border-b border-[var(--nx-line)]/40 whitespace-nowrap align-top transition-colors
                                             {{ $cellState === 'open'
                                                 ? 'bg-[var(--nx-accent)]/[0.06] cursor-text group-hover/row:bg-[var(--nx-accent)]/[0.09] hover:!bg-[var(--nx-accent)]/[0.13] hover:shadow-[inset_0_0_0_1px_var(--nx-accent)]'
                                                 : ($cellState === 'spread'

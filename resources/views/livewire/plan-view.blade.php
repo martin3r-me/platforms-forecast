@@ -917,10 +917,18 @@
                     if (! this.editing) return;
                     this.editing = false;
                     const ed = this.editor, row = ed.dataset.row, col = ed.dataset.col, val = ed.value;
-                    const td = ed.closest ? ed.closest('td[data-fc-r]') : null; // Editor hängt noch IN der Zelle
                     this.stashEditor();
-                    this.showPending(td, val);
-                    if (window.__fcWire) window.__fcWire.saveCell(row, col, val);
+                    // Mehrfach-Auswahl: den getippten Wert in ALLE markierten tippbaren Zellen schreiben
+                    // (Excel-artig). Nicht-editierbare Zellen im Rechteck werden übersprungen. Einzelzelle
+                    // → wie gehabt. Formeln (+50/*1,1/…) wertet der Server je Zelle aus.
+                    const q = this.rect(), cells = [];
+                    for (let r = q.r0; r <= q.r1; r++) for (let c = q.c0; c <= q.c1; c++) {
+                        const t = this.cell(r, c);
+                        if (t && t.dataset.fcEdit === '1') { cells.push({ row: t.dataset.fcRow, bucket: t.dataset.fcCol }); this.showPending(t, val); }
+                    }
+                    if (! window.__fcWire) return;
+                    if (cells.length > 1) window.__fcWire.saveRange(cells, val, 'filled');
+                    else window.__fcWire.saveCell(row, col, val);
                 },
                 // Sofort den getippten Wert über die Zelle legen, bis der Server-Roundtrip (Konsolidierung)
                 // den echten Wert einpatcht — sonst blitzt erst der alte Wert auf.

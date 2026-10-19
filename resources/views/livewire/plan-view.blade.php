@@ -175,7 +175,17 @@
         </header>
 
             {{-- ═══════════ Grid (füllt die Resthöhe, einziger Scroller) ═══════════ --}}
-            <div class="flex-1 min-h-0 min-w-0 flex flex-col bg-[var(--nx-surface)]">
+            {{-- Alpine-Zustand (Gruppen ein/aus + Kompakt) umspannt Toolbar UND Tabelle,
+                 damit die Darstellungs-Schalter oben in Tier 2 leben können. --}}
+            <div x-data="{
+                    dense: localStorage.getItem('fcDense') === '1',
+                    collapsed: (() => { try { return JSON.parse(localStorage.getItem('fcCollapsed:{{ $plan->uuid }}')) || {}; } catch (e) { return {}; } })(),
+                    isC(s) { return !! this.collapsed[s]; },
+                    toggle(s) { this.collapsed[s] = ! this.collapsed[s]; this.persist(); },
+                    setAll(v) { const secs = @js($sectionList); const m = {}; if (v) secs.forEach(s => m[s] = true); this.collapsed = m; this.persist(); },
+                    persist() { localStorage.setItem('fcCollapsed:{{ $plan->uuid }}', JSON.stringify(this.collapsed)); },
+                    toggleDense() { this.dense = ! this.dense; localStorage.setItem('fcDense', this.dense ? '1' : '0'); }
+                 }" class="flex-1 min-h-0 min-w-0 flex flex-col bg-[var(--nx-surface)]">
                 {{-- ═══ Kopf-Leiste der Tabelle = Steuerzentrale (liegt über der Scroll-Box, also immer sichtbar) ═══ --}}
                 <div class="shrink-0 border-b border-[var(--nx-line)]/50 bg-[var(--nx-hover)]">
                     {{-- Tier 1: Zeit-Navigation der Tabelle — Zoom-Pfad (raus) links, Ebenen-Sprung rechts --}}
@@ -225,10 +235,6 @@
                                 @svg('heroicon-o-pencil-square','w-3.5 h-3.5') {{ $editMode ? 'Fertig' : 'Bearbeiten' }}
                             </button>
                             <span class="text-[var(--nx-muted)]/30">·</span>
-                            @if($canZoom)
-                                <span class="inline-flex items-center gap-1 text-[11px] text-[var(--nx-muted)]" title="Auf einen Spaltenkopf klicken, um in diese Periode zu zoomen">@svg('heroicon-o-cursor-arrow-rays','w-3.5 h-3.5') Spalte anklicken = rein</span>
-                                <span class="text-[var(--nx-muted)]/30">·</span>
-                            @endif
                             <button type="button" wire:click="toggleShare"
                                 class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors
                                     {{ $showShare ? 'bg-[var(--nx-accent)]/10 text-[var(--nx-accent)] font-medium' : 'text-[var(--nx-muted)] hover:bg-[var(--nx-accent-soft)]' }}">
@@ -258,18 +264,26 @@
                                 </label>
                             @endif
                         </div>
-                        {{-- Feld-Zustände hinter einer „?"-Klappe (native <details>): entrauscht die Leiste,
-                             die Erklärung bleibt einen Klick entfernt. Kein JS, kein Funktionsverlust. --}}
-                        <details class="relative text-[11px] text-[var(--nx-muted)] [&_summary::-webkit-details-marker]:hidden">
-                            <summary class="inline-flex items-center gap-1 cursor-pointer list-none select-none px-2 py-1 rounded-md hover:bg-[var(--nx-accent-soft)] transition-colors" title="Was die Feld-Zustände bedeuten">@svg('heroicon-o-question-mark-circle','w-3.5 h-3.5') Feld-Zustände</summary>
-                            <div class="absolute right-0 top-full mt-1 z-20 flex flex-col gap-1.5 whitespace-nowrap bg-[var(--nx-surface)] border border-[var(--nx-line)] rounded-lg shadow-lg shadow-black/5 p-3">
-                                <span class="inline-flex items-center gap-1" title="Offen: hier kannst du tippen — Periode ist offen"><span class="w-3 h-3 rounded-sm bg-[var(--nx-accent)]/[0.12] ring-1 ring-inset ring-[var(--nx-accent)]/40"></span> offen · tippbar</span>
-                                <span class="inline-flex items-center gap-1" title="Berechnet: ergibt sich aus anderen Zeilen"><span class="text-[9px] font-bold px-1 rounded bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">ƒ</span> berechnet</span>
-                                <span class="inline-flex items-center gap-1" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch"><span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600">↑</span> abgeleitet</span>
-                                <span class="inline-flex items-center gap-1" title="Zu: Periode geschlossen — keine Eingabe">@svg('heroicon-o-lock-closed','w-3 h-3 text-[var(--nx-muted)]/60') zu</span>
-                                <span class="inline-flex items-center gap-1" title="Grob-Eingabe: gröber als die Erfassungs-Ebene — der Wert verteilt sich nach unten. Fluss wird per Schlüssel aufgeteilt, Rate/Bestand konstant repliziert.">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-amber-500/70') grob · verteilt</span>
-                            </div>
-                        </details>
+                        {{-- Rechts: Darstellung (Gruppen/Kompakt) + Feld-Zustände-Klappe —
+                             das frühere eigene Einklapp-Band ist hierher gewandert. --}}
+                        <div class="flex items-center gap-1 text-[11px] text-[var(--nx-muted)]">
+                            @if(count($sectionList) > 1)
+                                <button type="button" @click="setAll(true)" class="inline-flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-[var(--nx-accent-soft)] transition-colors" title="Alle Gruppen einklappen">@svg('heroicon-o-chevron-double-up','w-3.5 h-3.5') Einklappen</button>
+                                <button type="button" @click="setAll(false)" class="inline-flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-[var(--nx-accent-soft)] transition-colors" title="Alle Gruppen ausklappen">@svg('heroicon-o-chevron-double-down','w-3.5 h-3.5') Ausklappen</button>
+                                <button type="button" @click="toggleDense()" :class="dense ? 'bg-[var(--nx-accent)]/10 text-[var(--nx-accent)] font-medium' : 'hover:bg-[var(--nx-accent-soft)]'" class="inline-flex items-center gap-1 px-1.5 py-1 rounded-md transition-colors" title="Kompakte Darstellung: geringere Zeilenhöhe, Nebeninfos ausgeblendet">@svg('heroicon-o-bars-3-bottom-left','w-3.5 h-3.5') Kompakt</button>
+                                <span class="text-[var(--nx-muted)]/30">·</span>
+                            @endif
+                            <details class="relative [&_summary::-webkit-details-marker]:hidden">
+                                <summary class="inline-flex items-center gap-1 cursor-pointer list-none select-none px-1.5 py-1 rounded-md hover:bg-[var(--nx-accent-soft)] transition-colors" title="Was die Feld-Zustände bedeuten">@svg('heroicon-o-question-mark-circle','w-3.5 h-3.5') Feld-Zustände</summary>
+                                <div class="absolute right-0 top-full mt-1 z-20 flex flex-col gap-1.5 whitespace-nowrap bg-[var(--nx-surface)] border border-[var(--nx-line)] rounded-lg shadow-lg shadow-black/5 p-3">
+                                    <span class="inline-flex items-center gap-1" title="Offen: hier kannst du tippen — Periode ist offen"><span class="w-3 h-3 rounded-sm bg-[var(--nx-accent)]/[0.12] ring-1 ring-inset ring-[var(--nx-accent)]/40"></span> offen · tippbar</span>
+                                    <span class="inline-flex items-center gap-1" title="Berechnet: ergibt sich aus anderen Zeilen"><span class="text-[9px] font-bold px-1 rounded bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">ƒ</span> berechnet</span>
+                                    <span class="inline-flex items-center gap-1" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch"><span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600">↑</span> abgeleitet</span>
+                                    <span class="inline-flex items-center gap-1" title="Zu: Periode geschlossen — keine Eingabe">@svg('heroicon-o-lock-closed','w-3 h-3 text-[var(--nx-muted)]/60') zu</span>
+                                    <span class="inline-flex items-center gap-1" title="Grob-Eingabe: gröber als die Erfassungs-Ebene — der Wert verteilt sich nach unten. Fluss wird per Schlüssel aufgeteilt, Rate/Bestand konstant repliziert.">@svg('heroicon-o-bars-arrow-down','w-3 h-3 text-amber-500/70') grob · verteilt</span>
+                                </div>
+                            </details>
+                        </div>
                     </div>
 
                     @if($editMode)
@@ -305,23 +319,7 @@
                     @endif
                 </div>
 
-                <div x-data="{
-                        dense: localStorage.getItem('fcDense') === '1',
-                        collapsed: (() => { try { return JSON.parse(localStorage.getItem('fcCollapsed:{{ $plan->uuid }}')) || {}; } catch (e) { return {}; } })(),
-                        isC(s) { return !! this.collapsed[s]; },
-                        toggle(s) { this.collapsed[s] = ! this.collapsed[s]; this.persist(); },
-                        setAll(v) { const secs = @js($sectionList); const m = {}; if (v) secs.forEach(s => m[s] = true); this.collapsed = m; this.persist(); },
-                        persist() { localStorage.setItem('fcCollapsed:{{ $plan->uuid }}', JSON.stringify(this.collapsed)); },
-                        toggleDense() { this.dense = ! this.dense; localStorage.setItem('fcDense', this.dense ? '1' : '0'); }
-                     }" class="flex-1 min-h-0 min-w-0 flex flex-col">
-                    @if(count($sectionList) > 1)
-                        <div class="shrink-0 flex items-center gap-1.5 px-4 py-1.5 border-b border-[var(--nx-line)]/40 text-[11px] text-[var(--nx-muted)]">
-                            <button type="button" @click="setAll(true)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--nx-accent-soft)] transition-colors" title="Alle Gruppen einklappen">@svg('heroicon-o-chevron-double-up','w-3 h-3') Alle einklappen</button>
-                            <button type="button" @click="setAll(false)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--nx-accent-soft)] transition-colors" title="Alle Gruppen ausklappen">@svg('heroicon-o-chevron-double-down','w-3 h-3') Alle ausklappen</button>
-                            <span class="text-[var(--nx-muted)]/30">·</span>
-                            <button type="button" @click="toggleDense()" :class="dense ? 'bg-[var(--nx-accent)]/10 text-[var(--nx-accent)] font-medium' : 'hover:bg-[var(--nx-accent-soft)]'" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors" title="Kompakte Darstellung: geringere Zeilenhöhe, Nebeninfos ausgeblendet">@svg('heroicon-o-bars-3-bottom-left','w-3 h-3') Kompakt</button>
-                        </div>
-                    @endif
+                <div class="flex-1 min-h-0 min-w-0 flex flex-col">
                     <div class="flex-1 min-h-0 overflow-auto">
                     <table :class="{ 'fc-dense': dense }" class="min-w-full border-separate border-spacing-0 text-sm">
                         <thead>

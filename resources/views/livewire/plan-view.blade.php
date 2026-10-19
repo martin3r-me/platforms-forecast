@@ -753,6 +753,19 @@
         td.fc-fill-preview { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nx-accent) 55%, transparent);
             background: color-mix(in srgb, var(--nx-accent) 7%, transparent) !important; }
 
+        /* Optimistisches „Pending"-Feld: nach Enter sofort den getippten Wert zeigen (überdeckt den
+           alten Server-Wert), bis die Konsolidierung zurückkommt und Livewire den echten Wert
+           einpatcht. Behebt das „alt → ein paar Sekunden → neu"-Flackern. */
+        .fc-pending-chip { position: absolute; inset: 3px; z-index: 4; display: flex; align-items: center;
+            justify-content: flex-end; padding: 0 7px; border-radius: 5px; background: var(--nx-surface);
+            box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--nx-accent) 55%, transparent);
+            color: var(--nx-muted); font-weight: 600; font-size: .8125rem; font-variant-numeric: tabular-nums;
+            white-space: nowrap; overflow: hidden; }
+        .fc-pending-chip::after { content: '…'; margin-left: 5px; color: var(--nx-accent);
+            animation: fc-pend 1s steps(1, end) infinite; }
+        @keyframes fc-pend { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }
+        @media (prefers-reduced-motion: reduce) { .fc-pending-chip::after { animation: none; opacity: .7 } }
+
         /* Alpine: erst nach Init anzeigen (verhindert Aufblitzen von Anzahl-Badges/collapsed-State) */
         [x-cloak] { display: none !important; }
 
@@ -857,8 +870,26 @@
                     if (! this.editing) return;
                     this.editing = false;
                     const ed = this.editor, row = ed.dataset.row, col = ed.dataset.col, val = ed.value;
+                    const td = ed.closest ? ed.closest('td[data-fc-r]') : null; // Editor hängt noch IN der Zelle
                     this.stashEditor();
+                    this.showPending(td, val);
                     if (window.__fcWire) window.__fcWire.saveCell(row, col, val);
+                },
+                // Sofort den getippten Wert über die Zelle legen, bis der Server-Roundtrip (Konsolidierung)
+                // den echten Wert einpatcht — sonst blitzt erst der alte Wert auf.
+                showPending(td, raw) {
+                    if (! td) return;
+                    const txt = (raw != null && String(raw).trim() !== '') ? String(raw).trim() : '–';
+                    td.classList.add('fc-pending');
+                    let chip = td.querySelector(':scope > .fc-pending-chip');
+                    if (! chip) { chip = document.createElement('span'); chip.className = 'fc-pending-chip'; td.appendChild(chip); }
+                    chip.textContent = txt;
+                    clearTimeout(chip.__t); // Sicherheitsnetz, falls kein Repaint kommt (z. B. Fehler)
+                    chip.__t = setTimeout(() => { chip.remove(); td.classList.remove('fc-pending'); }, 8000);
+                },
+                clearPending() {
+                    document.querySelectorAll('td.fc-pending').forEach(td => td.classList.remove('fc-pending'));
+                    document.querySelectorAll('.fc-pending-chip').forEach(c => { clearTimeout(c.__t); c.remove(); });
                 },
                 cancelEdit() { if (this.editing) { this.editing = false; this.stashEditor(); } },
                 rect() {
@@ -1054,7 +1085,7 @@
 
             // Auswahl nach Livewire-Re-Render (Speichern) neu zeichnen.
             if (window.Livewire) {
-                Livewire.hook('commit', ({ succeed }) => { succeed(() => { G.paint(); }); });
+                Livewire.hook('commit', ({ succeed }) => { succeed(() => { G.clearPending(); G.paint(); }); });
             }
         }
     </script>

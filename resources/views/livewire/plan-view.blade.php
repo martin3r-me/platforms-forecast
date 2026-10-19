@@ -416,15 +416,25 @@
                                         @php
                                             $s = $meta[$rowKey] ?? ['value' => 0, 'rest' => 0, 'committed' => 0, 'implied' => false];
                                             $sPct = $s['value'] != 0 ? round($s['committed'] / $s['value'] * 100) : 100;
+                                            // Diese „Ebene gesamt“-Spalte ist der Jahres-Rollup über die gezeigten Perioden —
+                                            // also gröber als die Erfassungs-Ebene. Anteile/Quoten (Faktoren) UND Ratio-Formeln
+                                            // (z. B. „Summe Umsatzanteile“) dürfen hier NICHT aufsummiert werden (12 × 44 % = 579 %
+                                            // bzw. 12 × 100 % = 1.200 % ist Unsinn) → „·“, wie bei den groben Spalten. €/DB/EBITDA
+                                            // (dimension money, additiv) bleiben unberührt.
+                                            $sIsFactor = ($rowInfo[$rowKey]['isFactor'] ?? false) || ($rowInfo[$rowKey]['nonAdditive'] ?? false);
                                         @endphp
                                         <td class="text-right px-4 py-1.5 border-b border-r border-[var(--nx-line)]/40 bg-[var(--nx-accent)]/[0.04] align-top">
-                                            <div class="font-semibold tabular-nums {{ $toneOf($rowKey, $s['value']) }}">{{ $s['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $s['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $s['value'])) }}<span class="text-[10px] font-normal text-[var(--nx-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></div>
-                                            @if(! $isF && $s['rest'] > 0)
-                                                <div class="mt-1.5 h-1 rounded-full bg-[var(--nx-accent-soft)] overflow-hidden flex">
-                                                    <div class="h-full bg-[var(--nx-accent)]" style="width: {{ $sPct }}%"></div>
-                                                    <div class="h-full bg-amber-400/70" style="width: {{ 100 - $sPct }}%"></div>
-                                                </div>
-                                                <div class="mt-0.5 text-[10px] text-amber-600">Rest {{ $fmt($s['rest']) }} verteilt</div>
+                                            @if($sIsFactor)
+                                                <span class="text-[var(--nx-muted)]/40" title="Anteil/Quote summiert sich über die Perioden nicht sinnvoll — nur je Erfassungs-Periode (z. B. Monat) aussagekräftig.">·</span>
+                                            @else
+                                                <div class="font-semibold tabular-nums {{ $toneOf($rowKey, $s['value']) }}">{{ $s['implied'] ? '≈ ' : '' }}{{ $signOf($rowKey, $s['value']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $s['value'])) }}<span class="text-[10px] font-normal text-[var(--nx-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></div>
+                                                @if(! $isF && $s['rest'] > 0)
+                                                    <div class="mt-1.5 h-1 rounded-full bg-[var(--nx-accent-soft)] overflow-hidden flex">
+                                                        <div class="h-full bg-[var(--nx-accent)]" style="width: {{ $sPct }}%"></div>
+                                                        <div class="h-full bg-amber-400/70" style="width: {{ 100 - $sPct }}%"></div>
+                                                    </div>
+                                                    <div class="mt-0.5 text-[10px] text-amber-600">Rest {{ $fmt($s['rest']) }} verteilt</div>
+                                                @endif
                                             @endif
                                         </td>
                                     @endif

@@ -416,12 +416,12 @@
                                         @php
                                             $s = $meta[$rowKey] ?? ['value' => 0, 'rest' => 0, 'committed' => 0, 'implied' => false];
                                             $sPct = $s['value'] != 0 ? round($s['committed'] / $s['value'] * 100) : 100;
-                                            // Diese „Ebene gesamt“-Spalte ist der Jahres-Rollup über die gezeigten Perioden —
-                                            // also gröber als die Erfassungs-Ebene. Anteile/Quoten (Faktoren) UND Ratio-Formeln
-                                            // (z. B. „Summe Umsatzanteile“) dürfen hier NICHT aufsummiert werden (12 × 44 % = 579 %
-                                            // bzw. 12 × 100 % = 1.200 % ist Unsinn) → „·“, wie bei den groben Spalten. €/DB/EBITDA
-                                            // (dimension money, additiv) bleiben unberührt.
-                                            $sIsFactor = ($rowInfo[$rowKey]['isFactor'] ?? false) || ($rowInfo[$rowKey]['nonAdditive'] ?? false);
+                                            // Diese „Ebene gesamt“-Spalte ist der Jahres-Rollup — gröber als die Erfassungs-Ebene.
+                                            // Anteile/Quoten (FAKTOR) UND Ratio-Formeln (z. B. „Summe Umsatzanteile“) rollen hier
+                                            // zu Summen-Unsinn auf (579 % bzw. 1.200 %). NUR 'recompute'/'wavg' rechnen den Jahres-
+                                            // wert korrekt → sichtbar; alles andere → „·“. €/DB/EBITDA (money, additiv) unberührt.
+                                            $sIsFactor = (($rowInfo[$rowKey]['isFactor'] ?? false) || ($rowInfo[$rowKey]['nonAdditive'] ?? false))
+                                                && ! in_array($rowInfo[$rowKey]['timeAgg'] ?? 'flow', ['recompute', 'wavg'], true);
                                         @endphp
                                         <td class="text-right px-4 py-1.5 border-b border-r border-[var(--nx-line)]/40 bg-[var(--nx-accent)]/[0.04] align-top">
                                             @if($sIsFactor)
@@ -472,9 +472,14 @@
                                             // Grid-Editor: editierbar = offen/spread/ist im Bearbeiten-Modus.
                                             $cellEditable = $editMode && in_array($cellState, ['open', 'spread', 'actual'], true);
                                             $isFu = $rowInfo[$rowKey]['isFactor'] ?? false;
-                                            // Faktor-Zeile (Anteil/Quote) auf einer Ebene GRÖBER als die Erfassung:
-                                            // der %-Wert wäre aufsummiert (12 × 95 % = 1.140 %) → irreführend, daher „·“.
-                                            $colCoarse = $isFu && (($levelRank[\Platform\Forecast\Enums\TimeLevel::fromKey($bkt)->value] ?? 99) < $baseRank);
+                                            // „·“ auf gröberer Ebene als die Erfassung: Anteile/Quoten (FAKTOR) UND Ratio-Formeln
+                                            // (Dimension ratio, z. B. „Summe Umsatzanteile“). Auf groben Ebenen rollt die Engine ihre
+                                            // Werte auf — für Prozente ergibt das Unsinn (Σ: 12 × 95 % = 1.140 %, aber auch eine
+                                            // „avg“-Summenzeile landet effektiv bei 300 % je Quartal). NUR 'recompute' und 'wavg'
+                                            // berechnen grobe Ebenen korrekt neu — die bleiben sichtbar; alles andere → „·“.
+                                            $rowRatioNoCoarse = (($rowInfo[$rowKey]['isFactor'] ?? false) || ($rowInfo[$rowKey]['nonAdditive'] ?? false))
+                                                && ! in_array($rowInfo[$rowKey]['timeAgg'] ?? 'flow', ['recompute', 'wavg'], true);
+                                            $colCoarse = $rowRatioNoCoarse && (($levelRank[\Platform\Forecast\Enums\TimeLevel::fromKey($bkt)->value] ?? 99) < $baseRank);
                                             $cellObj = $isF ? null : ($row['cells'][$col['bucket']] ?? null);
                                             // Prefill: im Ist-Modus der Ist-Wert, sonst der erfasste Plan-Wert.
                                             $pfSrc = ($showActual && $editMode)
@@ -521,9 +526,9 @@
                                                     @svg('heroicon-o-exclamation-triangle','w-3 h-3')
                                                 </span>
                                             @endif
-                                            @if($isFu && $colCoarse)
-                                                {{-- Faktor auf gröberer Ebene: aufsummierter %-Wert wäre irreführend → „·“. --}}
-                                                <span class="text-[var(--nx-muted)]/40" title="Anteil/Quote ist nur auf der Erfassungs-Ebene (Monat) aussagekräftig — gröber summiert sich der Prozentwert auf.">·</span>
+                                            @if($colCoarse)
+                                                {{-- Anteil/Quote/Ratio (flow) auf gröberer Ebene: aufsummierter %-Wert wäre irreführend → „·“. --}}
+                                                <span class="text-[var(--nx-muted)]/40" title="Anteil/Quote ist nur auf der Erfassungs-Ebene (z. B. Monat) aussagekräftig — gröber summiert sich der Prozentwert auf.">·</span>
                                             @elseif($isF)
                                                 {{-- Formula: berechnet, read-only --}}
                                                 @php $fv = $formulaCells[$rowKey][$col['bucket']] ?? 0; @endphp

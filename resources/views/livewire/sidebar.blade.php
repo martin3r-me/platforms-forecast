@@ -17,7 +17,7 @@
 <div>
     {{-- Modul Header --}}
     <div x-show="!collapsed" class="p-3 text-sm italic text-[color:var(--nx-text)] uppercase border-b border-[color:var(--nx-line)] mb-2">
-        Forecast
+        Zahlenwerk
     </div>
     
     {{-- Abschnitt: Allgemein --}}

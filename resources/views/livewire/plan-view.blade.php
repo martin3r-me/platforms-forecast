@@ -126,38 +126,29 @@
 
         {{-- ═══════════ Konsolidierter Kopf ═══════════ --}}
         <header class="shrink-0 px-5 pt-3 pb-2.5 border-b border-[var(--nx-line)]/60">
-            <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
-                <h1 class="text-[15px] font-semibold tracking-tight text-[var(--nx-text)] truncate max-w-[24rem] mr-1">{{ $plan->name }}</h1>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold {{ $roleText }} {{ $roleBg }}" title="{{ $roleTip }}">
-                    @svg($roleIcon,'w-3 h-3') {{ $roleLabel }}
-                </span>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
-                    @svg('heroicon-o-squares-2x2','w-3 h-3') {{ $plan->planType?->name }}
-                </span>
-                @if($plan->organization_entity_id)
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
-                        @svg('heroicon-o-building-office-2','w-3 h-3') Knoten #{{ $plan->organization_entity_id }}
-                    </span>
-                @endif
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
-                    @svg('heroicon-o-clock','w-3 h-3') Version {{ $plan->current_version }}
-                </span>
-                @if($editMode)
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent)]/10 text-[var(--nx-accent)] font-medium">
-                        @svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten
-                    </span>
-                @else
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">
-                        @svg('heroicon-o-eye','w-3 h-3') Nur Ansicht
-                    </span>
-                @endif
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]" title="Vorlauf: öffnet X Tage vor Periodenstart · Nachlauf: bleibt Y Tage nach Periodenende offen">
-                    @svg('heroicon-o-lock-closed','w-3 h-3') Vorlauf {{ $lock['lead_days'] }} T · Nachlauf {{ $lock['grace_days'] }} T
-                </span>
-                {{-- Erklärung als Tooltip statt eigener Zeile — spart eine Kopfzeile --}}
-                <span class="inline-flex items-center text-[var(--nx-muted)]/70 cursor-help" tabindex="0" title="{{ $explain }}">
-                    @svg('heroicon-o-information-circle','w-4 h-4')
-                </span>
+            <div class="flex items-start justify-between gap-4">
+                {{-- Titel + Rolle + Kontext als ruhige Prosa statt Pill-Reihe (Artifact-Linie) --}}
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <h1 class="text-[15px] font-semibold tracking-tight text-[var(--nx-text)] truncate max-w-[36rem]">{{ $plan->name }}</h1>
+                        <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold {{ $roleText }} {{ $roleBg }}" title="{{ $roleTip }}">
+                            @svg($roleIcon,'w-3 h-3') {{ $roleLabel }}
+                        </span>
+                    </div>
+                    <div class="mt-1 flex items-center gap-1.5 text-xs text-[var(--nx-muted)] min-w-0">
+                        <span class="truncate">{{ $plan->planType?->name }}@if($parentPlan) · konsolidiert in „<span class="font-medium text-[var(--nx-text)]/80">{{ $parentPlan->name }}</span>“@endif @if(! $isFolder && count($usedIn))· speist „<span class="font-medium text-[var(--nx-text)]/80">{{ implode('“, „', $usedIn) }}</span>“@endif</span>
+                        {{-- Technische Details (Org-Knoten, Lock-Fenster) hinter dem Info-Tooltip, raus aus der Sichtzeile --}}
+                        <span class="shrink-0 inline-flex items-center text-[var(--nx-muted)]/60 hover:text-[var(--nx-muted)] cursor-help" tabindex="0"
+                              title="{{ $explain }}{{ $plan->organization_entity_id ? ' · Org-Knoten #'.$plan->organization_entity_id : '' }} · Bearbeitungsfenster: Vorlauf {{ $lock['lead_days'] }} T / Nachlauf {{ $lock['grace_days'] }} T">
+                            @svg('heroicon-o-information-circle','w-3.5 h-3.5')
+                        </span>
+                    </div>
+                </div>
+                {{-- Rechts: dezenter Speicher-/Versions-Status (wie im Artifact „gespeichert · v237") --}}
+                <div class="shrink-0 flex items-center gap-1.5 text-[11px] text-[var(--nx-muted)] whitespace-nowrap" title="Jede Eingabe wird sofort gespeichert und versioniert — aktuelle Version {{ $plan->current_version }}">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    gespeichert · v{{ $plan->current_version }}
+                </div>
             </div>
 
             {{-- ═══ KPI-Streifen: Ergebnis-/Meilenstein-Zeilen kompakt in einer Zeile ═══ --}}

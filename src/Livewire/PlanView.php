@@ -616,8 +616,9 @@ class PlanView extends Component
 
         // Anteils-Verteilung: je Summen-Block der prozentuale Anteil jeder Mitglied-Zeile
         // pro Spalte (Zusammensetzung; bei einer Summe ergeben die Teile immer 100 %).
+        // Nur rechnen, wenn die Anteil-Ansicht aktiv ist — beim Tippen (Toggle aus) gespart.
         $share = [];
-        foreach ($rows as $sk => $r) {
+        foreach ($this->showShare ? $rows : [] as $sk => $r) {
             if (! ($rowInfo[$sk]['isFormula'] ?? false) || ($rowInfo[$sk]['agg'] ?? '') !== 'sum') {
                 continue;
             }
@@ -645,8 +646,9 @@ class PlanView extends Component
             }
             return (float) ($meta[$rk]['spreadBy'][$b] ?? 0);
         };
+        // Nur rechnen, wenn die Δ-Vorperiode-Ansicht aktiv ist.
         $delta = [];
-        foreach ($rows as $rk => $r) {
+        foreach ($this->showDelta ? $rows : [] as $rk => $r) {
             $prev = null;
             foreach ($columns as $col) {
                 $v = $colVal($rk, $col['bucket']);
@@ -722,8 +724,9 @@ class PlanView extends Component
 
         // Bezugsgrößen-Quote: Zeile mit quoteBasis zeigt „Betrag ÷ Referenz-Zeile" je Spalte.
         // Verallgemeinerung von „% Anteil" (Referenz frei wählbar, nicht nur Summen-Block).
+        // Quote wird nur in der Anteil-Ansicht angezeigt → nur dann rechnen.
         $quote = [];
-        foreach ($rows as $rk => $r) {
+        foreach ($this->showShare ? $rows : [] as $rk => $r) {
             $basisKey = $rowInfo[$rk]['quoteBasis'] ?? null;
             if (! $basisKey || ! isset($rows[$basisKey])) {
                 continue;

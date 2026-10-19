@@ -16,7 +16,7 @@
 
     <x-slot name="actionbar">
         <x-ui-page-actionbar :breadcrumbs="[
-            ['label' => 'Forecast', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
+            ['label' => 'Zahlenwerk', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
             ['label' => 'Einstellungen'],
             ['label' => $tabs[$section][0] ?? 'Übersicht'],
         ]" />

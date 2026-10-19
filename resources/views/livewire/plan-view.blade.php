@@ -82,14 +82,14 @@
 
 <x-ui-page>
     <x-slot name="navbar">
-        <x-ui-page-navbar title="Forecast" />
+        <x-ui-page-navbar title="Zahlenwerk" />
     </x-slot>
 
     <x-slot name="actionbar">
         @php
             // Breadcrumb = Ordner-Pfad (Wurzel → … → hier): man sieht dauerhaft, wo man liegt.
             $crumbs = [
-                ['label' => 'Forecast', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
+                ['label' => 'Zahlenwerk', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
                 ['label' => 'Planungen', 'href' => route('forecast.plans.index')],
             ];
             foreach ($ancestors as $anc) {

@@ -1,5 +1,5 @@
 {{--
-    Forecast — Dashboard
+    Zahlenwerk — Dashboard
 
     Leeres Modul-Grundgerüst mit funktionsfähiger Page-Shell:
     Navbar, Actionbar, linke Sidebar (sidebar-Slot) und rechte Sidebar (activity-Slot).
@@ -11,13 +11,13 @@
 <x-ui-page>
     {{-- Navbar --}}
     <x-slot name="navbar">
-        <x-ui-page-navbar title="Forecast" />
+        <x-ui-page-navbar title="Zahlenwerk" />
     </x-slot>
 
     {{-- Actionbar --}}
     <x-slot name="actionbar">
         <x-ui-page-actionbar :breadcrumbs="[
-            ['label' => 'Forecast', 'icon' => 'presentation-chart-line'],
+            ['label' => 'Zahlenwerk', 'icon' => 'presentation-chart-line'],
         ]" />
     </x-slot>
 

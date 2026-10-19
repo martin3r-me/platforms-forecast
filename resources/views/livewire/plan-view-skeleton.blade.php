@@ -3,12 +3,12 @@
      echte Grid (plan-view.blade.php) rendert. Nur Plan-Metadaten, keine Zellberechnung. --}}
 <x-ui-page>
     <x-slot name="navbar">
-        <x-ui-page-navbar title="Forecast" />
+        <x-ui-page-navbar title="Zahlenwerk" />
     </x-slot>
 
     <x-slot name="actionbar">
         <x-ui-page-actionbar :breadcrumbs="[
-            ['label' => 'Forecast', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
+            ['label' => 'Zahlenwerk', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
             ['label' => 'Planungen', 'href' => route('forecast.plans.index')],
             ['label' => $plan->name],
         ]" />

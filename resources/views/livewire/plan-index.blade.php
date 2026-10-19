@@ -1,11 +1,11 @@
 <x-ui-page>
     <x-slot name="navbar">
-        <x-ui-page-navbar title="Forecast" />
+        <x-ui-page-navbar title="Zahlenwerk" />
     </x-slot>
 
     <x-slot name="actionbar">
         <x-ui-page-actionbar :breadcrumbs="[
-            ['label' => 'Forecast', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
+            ['label' => 'Zahlenwerk', 'href' => route('forecast.dashboard'), 'icon' => 'presentation-chart-line'],
             ['label' => 'Planungen'],
         ]" />
     </x-slot>

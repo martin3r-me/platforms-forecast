@@ -228,11 +228,15 @@
                     {{-- Tier 2: Anzeige-Optionen + Legende --}}
                     <div class="flex flex-wrap items-center justify-between gap-2 px-4 pb-2.5">
                         <div class="flex items-center gap-2">
+                            {{-- Im Ist-Modus heißt Bearbeiten „Ist eingeben" (teal), damit klar ist:
+                                 Ist erfasst man über den Bearbeiten-Modus — nicht allein durch „Ist / Δ". --}}
                             <button type="button" wire:click="toggleEdit"
                                 class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors
-                                    {{ $editMode ? 'bg-[var(--nx-accent)] text-[var(--nx-on-accent)]' : 'text-[var(--nx-accent)] ring-1 ring-[var(--nx-accent)]/30 hover:bg-[var(--nx-accent)]/10' }}"
-                                title="Nur offene Zellen werden zum Tippfeld. Geschlossene/berechnete/abgeleitete bleiben gesperrt.">
-                                @svg('heroicon-o-pencil-square','w-3.5 h-3.5') {{ $editMode ? 'Fertig' : 'Bearbeiten' }}
+                                    {{ $editMode
+                                        ? ($showActual ? 'bg-teal-600 text-white' : 'bg-[var(--nx-accent)] text-[var(--nx-on-accent)]')
+                                        : ($showActual ? 'text-teal-700 ring-1 ring-teal-500/40 hover:bg-teal-500/10' : 'text-[var(--nx-accent)] ring-1 ring-[var(--nx-accent)]/30 hover:bg-[var(--nx-accent)]/10') }}"
+                                title="{{ $showActual ? 'Ist-Werte erfassen: tippbare Zellen werden zu Ist-Eingabefeldern (jede Periode).' : 'Nur offene Zellen werden zum Tippfeld. Geschlossene/berechnete/abgeleitete bleiben gesperrt.' }}">
+                                @svg('heroicon-o-pencil-square','w-3.5 h-3.5') {{ $editMode ? 'Fertig' : ($showActual ? 'Ist eingeben' : 'Bearbeiten') }}
                             </button>
                             <span class="text-[var(--nx-muted)]/30">·</span>
                             <button type="button" wire:click="toggleShare"
@@ -251,6 +255,11 @@
                                 title="Ist-Werte + Abweichung anzeigen. Im Bearbeiten-Modus werden dann Ist-Werte eingegeben (jede Periode).">
                                 @svg('heroicon-o-scale','w-3.5 h-3.5') Ist / Δ
                             </button>
+                            @if($showActual && ! $editMode)
+                                <span class="inline-flex items-center gap-1 text-[11px] text-teal-700 font-medium" title="Zum Erfassen der Ist-Werte den Bearbeiten-Modus aktivieren">
+                                    @svg('heroicon-o-arrow-left','w-3 h-3') „Ist eingeben" aktivieren zum Erfassen
+                                </span>
+                            @endif
                             @if(count($comparablePlans) > 0)
                                 <span class="text-[var(--nx-muted)]/30">·</span>
                                 <label class="inline-flex items-center gap-1 text-xs {{ $compareWith ? 'text-[var(--nx-accent)] font-medium' : 'text-[var(--nx-muted)]' }}" title="Blattübergreifend vergleichen — je Zelle Vergleichswert + Δ (diese − Vergleich)">

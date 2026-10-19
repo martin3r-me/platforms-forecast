@@ -14,7 +14,7 @@
         ]" />
     </x-slot>
 
-    <x-ui-page-container>
+    <x-ui-page-container width="full">
         <div wire:init="loadGrid" class="space-y-5" aria-busy="true" aria-label="Planung wird geladen">
 
             <div class="space-y-5 animate-pulse motion-reduce:animate-none">

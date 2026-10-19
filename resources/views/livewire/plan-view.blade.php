@@ -107,7 +107,9 @@
         </x-ui-page-actionbar>
     </x-slot>
 
-    <x-ui-page-container>
+    {{-- Volle Fensterbreite (bewusste Ausnahme ggü. anderen Modulen): die dichte Monatsmatrix
+         braucht alle Monate + Summe auf einen Blick, nicht im 1200px-Korsett. --}}
+    <x-ui-page-container width="full">
         <div class="space-y-4">
 
             {{-- ═══════════ Kontext-Kopf ═══════════ --}}

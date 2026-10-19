@@ -387,7 +387,7 @@
                                     </tr>
                                 @endif
                                 @php $lastSection = $sec; @endphp
-                                <tr class="group/row {{ $isResult ? 'bg-[var(--nx-accent-soft)]' : ($isF ? 'bg-[var(--nx-hover)]/40' : '') }}"@if($sec) x-show="! isC({{ \Illuminate\Support\Js::from($sec) }})"@endif>
+                                <tr class="group/row {{ $isResult ? 'fc-result bg-[var(--nx-accent-soft)]' : ($isF ? 'bg-[var(--nx-hover)]/40' : '') }}"@if($sec) x-show="! isC({{ \Illuminate\Support\Js::from($sec) }})"@endif>
                                     {{-- Zeilen-Kopf --}}
                                     <td class="sticky left-0 z-10 bg-[var(--nx-surface)] {{ $isResult ? 'shadow-[inset_0_0_0_100vw_var(--nx-accent-soft)]' : ($isF ? 'shadow-[inset_0_0_0_100vw_var(--nx-hover)]' : '') }} px-4 py-1.5 border-b border-[var(--nx-line)]/40 transition-colors">
                                         <div class="flex items-center gap-1.5">
@@ -475,11 +475,11 @@
                                         @endphp
                                         <td class="relative text-right px-3 py-1.5 border-b border-[var(--nx-line)]/40 whitespace-nowrap align-top transition-colors
                                             {{ $cellState === 'open'
-                                                ? 'bg-[var(--nx-accent)]/[0.04] cursor-text group-hover/row:bg-[var(--nx-accent)]/[0.07] hover:!bg-[var(--nx-accent)]/[0.11] hover:shadow-[inset_0_0_0_1px_var(--nx-accent)]'
+                                                ? 'bg-[var(--nx-accent)]/[0.06] cursor-text group-hover/row:bg-[var(--nx-accent)]/[0.09] hover:!bg-[var(--nx-accent)]/[0.13] hover:shadow-[inset_0_0_0_1px_var(--nx-accent)]'
                                                 : ($cellState === 'spread'
-                                                    ? 'bg-amber-400/[0.05] cursor-text group-hover/row:bg-amber-400/[0.09] hover:!bg-amber-400/[0.14] hover:shadow-[inset_0_0_0_1px_rgb(251_191_36_/_0.6)]'
+                                                    ? 'bg-amber-400/[0.07] cursor-text group-hover/row:bg-amber-400/[0.11] hover:!bg-amber-400/[0.16] hover:shadow-[inset_0_0_0_1px_rgb(251_191_36_/_0.6)]'
                                                 : ($cellState === 'actual'
-                                                    ? 'bg-teal-500/[0.06] cursor-text group-hover/row:bg-teal-500/[0.1] hover:!bg-teal-500/[0.16] hover:shadow-[inset_0_0_0_1px_rgb(20_184_166_/_0.6)]'
+                                                    ? 'bg-teal-500/[0.08] cursor-text group-hover/row:bg-teal-500/[0.12] hover:!bg-teal-500/[0.18] hover:shadow-[inset_0_0_0_1px_rgb(20_184_166_/_0.6)]'
                                                 : ($cellState === 'locked'
                                                     ? 'opacity-50 group-hover/row:bg-[var(--nx-hover)]/50'
                                                     : 'group-hover/row:bg-[var(--nx-hover)]/60'))) }}"
@@ -487,11 +487,11 @@
                                             data-fc-row="{{ $rowKey }}" data-fc-col="{{ $col['bucket'] }}"
                                             @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif>
                                             @if($hasDetailMark)
-                                                <span class="absolute top-1 left-1.5 text-[var(--nx-accent)]/45 group-hover/row:text-[var(--nx-accent)]/70 transition-colors" title="Enthält feineres Detail — Spalte anklicken zum Reinzoomen">
+                                                <span class="fc-mark absolute top-1 left-1.5 text-[var(--nx-accent)]/70" title="Enthält feineres Detail — Spalte anklicken zum Reinzoomen">
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
                                                 </span>
                                             @elseif($cellState === 'spread')
-                                                <span class="absolute top-1 left-1.5 text-amber-500/60" title="Grob-Eingabe (gröber als die Erfassungs-Ebene): {{ $rowReplicates ? 'gilt als Rate/Bestand konstant für jede Teilperiode (repliziert).' : 'wird per Verteilungsschlüssel auf die Teilperioden aufgeteilt.' }} Gespeichert als Schätzung, ≈-Werte darunter.">
+                                                <span class="fc-mark absolute top-1 left-1.5 text-amber-500/80" title="Grob-Eingabe (gröber als die Erfassungs-Ebene): {{ $rowReplicates ? 'gilt als Rate/Bestand konstant für jede Teilperiode (repliziert).' : 'wird per Verteilungsschlüssel auf die Teilperioden aufgeteilt.' }} Gespeichert als Schätzung, ≈-Werte darunter.">
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
                                                 </span>
                                             @elseif($cellState === 'locked')
@@ -502,7 +502,7 @@
                                                         default => 'Periode geschlossen — hier ist keine Eingabe möglich.',
                                                     };
                                                 @endphp
-                                                <span class="absolute top-1 left-1.5 text-[var(--nx-muted)]/40" title="{{ $lockTitle }}">
+                                                <span class="fc-mark absolute top-1 left-1.5 text-[var(--nx-muted)]/60" title="{{ $lockTitle }}">
                                                     @svg('heroicon-o-lock-closed','w-3 h-3')
                                                 </span>
                                             @endif
@@ -746,6 +746,17 @@
         .fc-meta { opacity: 0; transition: opacity .12s ease; }
         tr:hover .fc-meta, tr:focus-within .fc-meta { opacity: 1; }
         @media (prefers-reduced-motion: reduce) { .fc-meta { transition: none; } }
+
+        /* Zell-Eckmarker (feineres Detail / grob→verteilt / zu) im Ruhezustand ruhig,
+           voll beim Überfahren der Zeile — entrauscht das Grid, Hinweis bleibt auf Abruf. */
+        .fc-mark { opacity: .38; transition: opacity .12s ease; }
+        tr:hover .fc-mark, tr:focus-within .fc-mark { opacity: 1; }
+        table.fc-dense .fc-mark { display: none; }
+        @media (prefers-reduced-motion: reduce) { .fc-mark { transition: none; } }
+
+        /* Ergebniszeilen (DB I–IV, EBITDA, …) als zartes Akzent-Band absetzen:
+           feine Linie oben + der bestehende Accent-Soft-Grund = klar lesbare Summe. */
+        tr.fc-result > td { border-top: 1px solid color-mix(in srgb, var(--nx-accent) 22%, transparent); }
 
         /* Kompakt-Modus: geringere Zeilenhöhe + Nebeninfos aus → mehr Zeilen auf einen Blick.
            Generisch (greift für jeden Plan-Typ, keine Zeilen-Spezifika). */

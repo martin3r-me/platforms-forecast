@@ -538,6 +538,29 @@
                                             @if($colCoarse)
                                                 {{-- Anteil/Quote/Ratio (flow) auf gröberer Ebene: aufsummierter %-Wert wäre irreführend → „·“. --}}
                                                 <span class="text-[var(--nx-muted)]/40" title="Anteil/Quote ist nur auf der Erfassungs-Ebene (z. B. Monat) aussagekräftig — gröber summiert sich der Prozentwert auf.">·</span>
+                                            @elseif($showActual)
+                                                {{-- ═══ Ist-Perspektive ═══ Ist = Hauptzahl (teal, das was man erfasst),
+                                                     Plan + Δ als blasse Referenz. Einheitlich für Eingabe- UND Formelzeilen,
+                                                     im Bearbeiten wie im Lesen — so ist immer klar: man sieht/tippt das IST. --}}
+                                                @php
+                                                    $acCell = $row['cells'][$col['bucket']] ?? null;
+                                                    $planV  = $acCell['value'] ?? 0;
+                                                    $hasIst = $acCell && ($acCell['hasActual'] ?? false);
+                                                    $istV   = $acCell['actual'] ?? 0;
+                                                    $istVar = $acCell['variance'] ?? ($istV - $planV);
+                                                @endphp
+                                                <div class="flex items-center justify-end">
+                                                    @if($hasIst)
+                                                        <span class="tabular-nums font-semibold text-teal-700">{{ $signOf($rowKey, $istV) }}{{ $fmtRow($rowKey, $magOf($rowKey, $istV)) }}<span class="text-[10px] font-normal text-[var(--nx-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
+                                                    @else
+                                                        <span class="text-[var(--nx-muted)]/40 text-[11px]" title="Noch kein Ist erfasst{{ $cellEditable ? ' — hier eintragen' : '' }}">–</span>
+                                                    @endif
+                                                </div>
+                                                @if($planV != 0 || $hasIst)
+                                                    <div class="mt-0.5 text-[10px] text-[var(--nx-muted)] whitespace-nowrap">
+                                                        <span title="Planwert">P&thinsp;{{ $signOf($rowKey, $planV) }}{{ $fmtRow($rowKey, $magOf($rowKey, $planV)) }}</span>@if($hasIst) · <span class="{{ $deltaTone($rowKey, $istVar) }}" title="Ist − Plan">Δ&thinsp;{{ $istVar > 0 ? '+' : ($istVar < 0 ? '−' : '') }}{{ $fmtRow($rowKey, abs($istVar)) }}</span>@endif
+                                                    </div>
+                                                @endif
                                             @elseif($isF)
                                                 {{-- Formula: berechnet, read-only --}}
                                                 @php $fv = $formulaCells[$rowKey][$col['bucket']] ?? 0; @endphp
@@ -589,20 +612,13 @@
                                                 $hasDelta = $showDelta && isset($delta[$rowKey][$col['bucket']]);
                                                 $qBasis = $rowInfo[$rowKey]['quoteBasis'] ?? null;
                                                 $hasQuote = $showShare && $qBasis && isset($quote[$rowKey][$col['bucket']]);
-                                                // Ist + Δ: nur in der Ist-Ansicht, wo Ist-Daten vorliegen und nicht gerade editiert wird.
-                                                $acCell = $row['cells'][$col['bucket']] ?? null;
-                                                $hasAct = $showActual && ! $cellEditable && $acCell && ($acCell['hasActual'] ?? false);
+                                                // Ist steht in der Ist-Perspektive jetzt als Hauptzahl in der Zelle (oben) —
+                                                // kein separater Ist-Streifen mehr nötig.
+                                                $hasAct = false;
                                                 $hasCmp = ($compareWith ?? null) && isset($cmpVals[$rowKey][$col['bucket']]);
                                             @endphp
                                             @if($hasShare || $hasDelta || $hasQuote || $hasAct || $hasCmp)
                                                 <div class="mt-2 pt-1.5 border-t border-dashed border-[var(--nx-line)]/40 flex flex-col items-end gap-1">
-                                                    @if($hasAct)
-                                                        @php $var = $acCell['variance'] ?? 0; @endphp
-                                                        <div class="inline-flex items-center gap-1.5 text-[10px] font-medium" title="Ist − Plan = Abweichung">
-                                                            <span class="text-teal-700">Ist {{ $signOf($rowKey, $acCell['actual']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $acCell['actual'])) }}</span>
-                                                            <span class="{{ $deltaTone($rowKey, $var) }}">Δ {{ $var > 0 ? '+' : ($var < 0 ? '−' : '') }}{{ $fmtRow($rowKey, abs($var)) }}</span>
-                                                        </div>
-                                                    @endif
                                                     @if($hasCmp)
                                                         @php
                                                             $cVal = $cmpVals[$rowKey][$col['bucket']];

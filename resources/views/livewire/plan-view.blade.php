@@ -549,7 +549,10 @@
                                                     $istV   = $acCell['actual'] ?? 0;
                                                     $istVar = $acCell['variance'] ?? ($istV - $planV);
                                                 @endphp
-                                                <div class="flex items-center justify-end">
+                                                <div class="flex items-center justify-end gap-1.5">
+                                                    @if($hasIst && ! $isF)
+                                                        <span class="text-[9px] font-bold leading-none px-1 py-0.5 rounded bg-teal-500/15 text-teal-700" title="Ist direkt erfasst">V</span>
+                                                    @endif
                                                     @if($hasIst)
                                                         <span class="tabular-nums font-semibold text-teal-700">{{ $signOf($rowKey, $istV) }}{{ $fmtRow($rowKey, $magOf($rowKey, $istV)) }}<span class="text-[10px] font-normal text-[var(--nx-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
                                                     @else
@@ -612,13 +615,22 @@
                                                 $hasDelta = $showDelta && isset($delta[$rowKey][$col['bucket']]);
                                                 $qBasis = $rowInfo[$rowKey]['quoteBasis'] ?? null;
                                                 $hasQuote = $showShare && $qBasis && isset($quote[$rowKey][$col['bucket']]);
-                                                // Ist steht in der Ist-Perspektive jetzt als Hauptzahl in der Zelle (oben) —
-                                                // kein separater Ist-Streifen mehr nötig.
-                                                $hasAct = false;
+                                                // Symmetrie Plan↔Ist: In der PLAN-Perspektive den Ist als kleine Referenzzeile
+                                                // (+ Δ) zeigen, sofern vorhanden. In der Ist-Perspektive steht der Plan bereits
+                                                // oben als Referenz, dort also nicht nochmal.
+                                                $acCell = $row['cells'][$col['bucket']] ?? null;
+                                                $hasAct = ! $showActual && $acCell && ($acCell['hasActual'] ?? false);
                                                 $hasCmp = ($compareWith ?? null) && isset($cmpVals[$rowKey][$col['bucket']]);
                                             @endphp
                                             @if($hasShare || $hasDelta || $hasQuote || $hasAct || $hasCmp)
                                                 <div class="mt-2 pt-1.5 border-t border-dashed border-[var(--nx-line)]/40 flex flex-col items-end gap-1">
+                                                    @if($hasAct)
+                                                        @php $var = $acCell['variance'] ?? 0; @endphp
+                                                        <div class="inline-flex items-center gap-1.5 text-[10px] font-medium" title="Ist − Plan = Abweichung">
+                                                            <span class="text-teal-700">Ist {{ $signOf($rowKey, $acCell['actual']) }}{{ $fmtRow($rowKey, $magOf($rowKey, $acCell['actual'])) }}</span>
+                                                            <span class="{{ $deltaTone($rowKey, $var) }}">Δ {{ $var > 0 ? '+' : ($var < 0 ? '−' : '') }}{{ $fmtRow($rowKey, abs($var)) }}</span>
+                                                        </div>
+                                                    @endif
                                                     @if($hasCmp)
                                                         @php
                                                             $cVal = $cmpVals[$rowKey][$col['bucket']];

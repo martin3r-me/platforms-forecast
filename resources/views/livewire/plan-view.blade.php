@@ -574,7 +574,9 @@
                                                 @endif
                                             @endif
                                             @php
-                                                $hasShare = $showShare && isset($share[$rowKey][$col['bucket']]);
+                                                // Kein Share-Overlay auf Anteils-/Quotenzeilen (FAKTOR): deren Wert IST schon
+                                                // der Prozentsatz → sonst steht z. B. „95 %" und direkt darunter nochmal „95 %".
+                                                $hasShare = $showShare && ! ($rowInfo[$rowKey]['isFactor'] ?? false) && isset($share[$rowKey][$col['bucket']]);
                                                 $hasDelta = $showDelta && isset($delta[$rowKey][$col['bucket']]);
                                                 $qBasis = $rowInfo[$rowKey]['quoteBasis'] ?? null;
                                                 $hasQuote = $showShare && $qBasis && isset($quote[$rowKey][$col['bucket']]);
@@ -739,9 +741,11 @@
         td[data-fc-edit="1"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nx-accent) 28%, transparent); border-radius: 5px; }
         td[data-fc-edit="1"]:hover { box-shadow: inset 0 0 0 1.5px var(--nx-accent); }
         td[data-fc-edit="1"][data-fc-spread="1"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, rgb(245 158 11) 45%, transparent); }
-        td.fc-sel { background: color-mix(in srgb, var(--nx-accent) 12%, transparent) !important; }
+        /* Bereichs-Auswahl klar sichtbar: kräftiger Accent-Fill (vorher 12 % → zu blass auf den
+           ohnehin getönten Eingabe-Zellen), aktive Zelle mit 2px-Rahmen obendrauf. */
+        td.fc-sel { background: color-mix(in srgb, var(--nx-accent) 22%, transparent) !important; }
         td.fc-active { box-shadow: inset 0 0 0 2px var(--nx-accent); z-index: 2; }
-        td.fc-active.fc-sel { background: color-mix(in srgb, var(--nx-accent) 6%, transparent) !important; }
+        td.fc-active.fc-sel { background: color-mix(in srgb, var(--nx-accent) 12%, transparent) !important; }
         body.fc-selecting { user-select: none; }
         .fc-editor { position: absolute; inset: 3px; width: calc(100% - 6px); box-sizing: border-box;
             text-align: right; font-variant-numeric: tabular-nums; font-size: .875rem;

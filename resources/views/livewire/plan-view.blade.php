@@ -865,7 +865,25 @@
                     this.active = p;
                     if (! extend || ! this.anchor) this.anchor = { r: p.r, c: p.c };
                     this.paint();
-                    const td = this.cell(p.r, p.c); if (td) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                    const td = this.cell(p.r, p.c); if (td) this.scrollToCell(td);
+                },
+                // scrollIntoView ignoriert die sticky Kopfzeile (top) und Label-Spalte (left) → beim
+                // Hoch-/Linksnavigieren verschwindet die Zelle darunter. Hier manuell so scrollen, dass
+                // sie die Sticky-Ränder frei räumt (minimaler Scroll, nur wenn nötig).
+                scrollToCell(td) {
+                    const sc = td.closest('.overflow-auto');
+                    if (! sc) { td.scrollIntoView({ block: 'nearest', inline: 'nearest' }); return; }
+                    const thead = sc.querySelector('thead');
+                    const headH = thead ? thead.getBoundingClientRect().height : 0;       // sticky Kopf-Höhe
+                    const corner = thead ? thead.querySelector('th') : null;
+                    const labelW = corner ? corner.getBoundingClientRect().width : 0;      // sticky Label-Breite
+                    const s = sc.getBoundingClientRect(), t = td.getBoundingClientRect();
+                    const pad = 2;
+                    const topLimit = s.top + headH + pad, leftLimit = s.left + labelW + pad;
+                    if (t.top < topLimit) sc.scrollTop -= (topLimit - t.top);
+                    else if (t.bottom > s.bottom - pad) sc.scrollTop += (t.bottom - (s.bottom - pad));
+                    if (t.left < leftLimit) sc.scrollLeft -= (leftLimit - t.left);
+                    else if (t.right > s.right - pad) sc.scrollLeft += (t.right - (s.right - pad));
                 },
                 move(dr, dc, extend) { if (this.active) this.select(this.active.r + dr, this.active.c + dc, extend); },
                 ensureEditor() {

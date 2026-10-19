@@ -25,8 +25,8 @@ class Sidebar extends Component
         $teamId = $user->currentTeam?->id ?? $user->current_team_id;
 
         $plans = ForecastPlan::where('team_id', $teamId)
-            ->orderBy('name')
-            ->get(['id', 'uuid', 'name', 'parent_plan_id']);
+            ->get(['id', 'uuid', 'name', 'parent_plan_id'])
+            ->sortBy(ForecastPlan::treeSortKey(...), SORT_STRING)->values();
 
         $childrenByParent = $plans->groupBy('parent_plan_id');
         $ids = $plans->pluck('id')->all();

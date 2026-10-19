@@ -20,8 +20,8 @@ class PlanIndex extends Component
 
         $plans = ForecastPlan::where('team_id', $teamId)
             ->with('planType')
-            ->orderBy('name')
-            ->get();
+            ->get()
+            ->sortBy(ForecastPlan::treeSortKey(...), SORT_STRING)->values();
 
         $childrenByParent = $plans->groupBy('parent_plan_id');
         $ids = $plans->pluck('id')->all();

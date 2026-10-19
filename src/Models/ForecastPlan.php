@@ -41,6 +41,22 @@ class ForecastPlan extends Model
         });
     }
 
+    /**
+     * Sortier-Schlüssel für Baum-/Listenanzeige: Kostenstellen numerisch nach
+     * ihrer KST-Nummer (aus dem Namen, z. B. „… KST 2000 …", „(KST 4500+5000)"),
+     * damit 2000 < 2526 < 4000 statt alphabetisch nach Standort-Kürzel. Knoten
+     * ohne KST-Nummer (Bereiche/Master) fallen auf den Namen zurück. Pro Gruppe
+     * (groupBy parent) ist die Menge homogen, daher mischt sich beides nie.
+     */
+    public static function treeSortKey(self $plan): string
+    {
+        if (preg_match('/KST\s*0*([0-9]+)/i', (string) $plan->name, $m)) {
+            return str_pad($m[1], 10, '0', STR_PAD_LEFT);
+        }
+
+        return mb_strtolower((string) $plan->name);
+    }
+
     public function team()
     {
         return $this->belongsTo(\Platform\Core\Models\Team::class);

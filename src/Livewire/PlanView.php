@@ -668,8 +668,8 @@ class PlanView extends Component
             ->where('team_id', $plan->team_id)
             ->where('plan_type_id', $plan->plan_type_id)
             ->where('id', '!=', $plan->id)
-            ->orderBy('name')
-            ->get(['uuid', 'name']);
+            ->get(['uuid', 'name'])
+            ->sortBy(ForecastPlan::treeSortKey(...), SORT_STRING)->values();
         $cmpVals = [];
         $cmpDelta = [];
         $cmpApprox = [];
@@ -808,7 +808,8 @@ class PlanView extends Component
 
         // Navigation: Ahnen-Kette (Konsolidierung hoch), Kinder, Detail-Pläne, Herkunft
         $parentPlan = $plan->parentPlan;
-        $childPlans = $plan->children()->orderBy('name')->get();
+        $childPlans = $plan->children()->get()
+            ->sortBy(ForecastPlan::treeSortKey(...), SORT_STRING)->values();
         $fromPlan = $this->from
             ? ForecastPlan::where('team_id', $plan->team_id)->where('uuid', $this->from)->first()
             : null;
@@ -823,8 +824,8 @@ class PlanView extends Component
 
         // Team-Pläne + Rollen: Master (hat Kinder) · Instanz (hat Elternplan) · Detail (wird referenziert) · Einzel
         $allPlans = ForecastPlan::where('team_id', $plan->team_id)
-            ->orderBy('name')
-            ->get(['id', 'uuid', 'name', 'parent_plan_id', 'plan_type_id']);
+            ->get(['id', 'uuid', 'name', 'parent_plan_id', 'plan_type_id'])
+            ->sortBy(ForecastPlan::treeSortKey(...), SORT_STRING)->values();
         $childrenByParent = $allPlans->groupBy('parent_plan_id');
         $planIds = $allPlans->pluck('id')->all();
         $ancestorIds = array_map(fn ($a) => $a->id, $ancestors);

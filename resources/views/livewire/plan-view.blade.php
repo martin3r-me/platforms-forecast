@@ -78,6 +78,33 @@
     $roleText  = $isFolder ? 'text-indigo-600' : 'text-emerald-600';
     $roleBg    = $isFolder ? 'bg-indigo-500/10' : 'bg-emerald-500/10';
     $roleTip   = $isFolder ? 'Ordner — bündelt untergeordnete Planungen zu einem Gesamtbild.' : 'Blatt — hier werden Zahlen erfasst.';
+
+    // Füllstand (nur Blatt): wie viele eingebbare Erfassungsfelder sind schon befüllt?
+    // Gezählt werden Eingabe-Zeilen (keine Formel/Ordner-Zeilen) × offene bzw. grob-verteilbare
+    // Perioden AUF DER ERFASSUNGS-EBENE (Monat) — Summen-/Grobspalten zählen nicht doppelt mit.
+    // Perspektiv-abhängig: Plan = erfasster Planwert, Ist = erfasster Ist-Wert. So weiß ein Planer,
+    // wie weit ein Blatt ist, bevor überhaupt ein Wert (und das „V“) drinsteht.
+    $fillTotal = 0; $fillDone = 0;
+    if (! $isMaster) {
+        foreach ($rows as $frk => $frow) {
+            $fi = $rowInfo[$frk] ?? [];
+            if ($fi['isFormula'] ?? false) continue;      // berechnet
+            if (! empty($fi['refPlans'])) continue;        // abgeleitet/Drill
+            $fRatioNoCoarse = (($fi['isFactor'] ?? false) || ($fi['nonAdditive'] ?? false))
+                && ! in_array($fi['timeAgg'] ?? 'flow', ['recompute', 'wavg'], true);
+            foreach ($columns as $fcol) {
+                $fbkt = $fcol['bucket'];
+                $frank = $levelRank[\Platform\Forecast\Enums\TimeLevel::fromKey($fbkt)->value] ?? 99;
+                if ($frank !== $baseRank) continue;        // nur Erfassungs-Ebene (keine Summen/grob)
+                $fstate = $colStatus[$fbkt]['state'] ?? 'mixed';
+                if (! $showActual && ! in_array($fstate, ['open', 'mixed'], true)) continue; // Plan: nur offene/spread
+                $fcell = $frow['cells'][$fbkt] ?? null;
+                $fillTotal++;
+                if ($showActual ? ($fcell['hasActual'] ?? false) : ($fcell['entered'] ?? false)) $fillDone++;
+            }
+        }
+    }
+    $fillPct = $fillTotal > 0 ? (int) round($fillDone / $fillTotal * 100) : 0;
 @endphp
 
 <x-ui-page>
@@ -144,10 +171,22 @@
                         </span>
                     </div>
                 </div>
-                {{-- Rechts: dezenter Speicher-/Versions-Status (wie im Artifact „gespeichert · v237") --}}
-                <div class="shrink-0 flex items-center gap-1.5 text-[11px] text-[var(--nx-muted)] whitespace-nowrap" title="Jede Eingabe wird sofort gespeichert und versioniert — aktuelle Version {{ $plan->current_version }}">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    gespeichert · v{{ $plan->current_version }}
+                {{-- Rechts: Füllstand (nur Blatt) + dezenter Speicher-/Versions-Status --}}
+                <div class="shrink-0 flex items-center gap-3 text-[11px] whitespace-nowrap">
+                    @if($fillTotal > 0)
+                        <div class="flex items-center gap-1.5" title="{{ $showActual ? 'Ist-Erfassung' : 'Planung' }}: {{ $fillDone }} von {{ $fillTotal }} Erfassungsfeldern {{ $showActual ? 'mit Ist-Wert' : 'geplant' }} ({{ $fillPct }} %)">
+                            <span class="relative inline-flex w-16 h-1.5 rounded-full bg-[var(--nx-hover)] overflow-hidden" aria-hidden="true">
+                                <span class="absolute inset-y-0 left-0 rounded-full {{ $showActual ? 'bg-teal-500' : 'bg-[var(--nx-accent)]' }} transition-[width] duration-300" style="width: {{ $fillPct }}%"></span>
+                            </span>
+                            <span class="tabular-nums font-medium text-[var(--nx-text)]">{{ $fillDone }}/{{ $fillTotal }}</span>
+                            <span class="text-[var(--nx-muted)]">{{ $showActual ? 'Ist' : 'geplant' }}</span>
+                        </div>
+                        <span class="text-[var(--nx-line)]" aria-hidden="true">·</span>
+                    @endif
+                    <div class="flex items-center gap-1.5 text-[var(--nx-muted)]" title="Jede Eingabe wird sofort gespeichert und versioniert — aktuelle Version {{ $plan->current_version }}">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        gespeichert · v{{ $plan->current_version }}
+                    </div>
                 </div>
             </div>
 

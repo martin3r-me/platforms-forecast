@@ -124,14 +124,8 @@
             }
             $crumbs[] = ['label' => $plan->name];
         @endphp
-        <x-ui-page-actionbar :breadcrumbs="$crumbs">
-            {{-- Dauerhaft sichtbar (Leiste ist sticky): Ordner oder Blatt --}}
-            <x-slot name="left">
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold {{ $roleText }} {{ $roleBg }}" title="{{ $roleTip }}">
-                    @svg($roleIcon,'w-3 h-3') {{ $roleLabel }}
-                </span>
-            </x-slot>
-        </x-ui-page-actionbar>
+        {{-- Rolle (Ordner/Blatt) steht im Kopf neben dem Titel — hier nicht doppeln. --}}
+        <x-ui-page-actionbar :breadcrumbs="$crumbs" />
     </x-slot>
 
     {{-- Volle Fensterbreite (bewusste Ausnahme ggü. anderen Modulen): die dichte Monatsmatrix
@@ -155,21 +149,17 @@
         <header class="shrink-0 px-5 pt-3 pb-2.5 border-b border-[var(--nx-line)]/60">
             <div class="flex items-start justify-between gap-4">
                 {{-- Titel + Rolle + Kontext als ruhige Prosa statt Pill-Reihe (Artifact-Linie) --}}
-                <div class="min-w-0">
-                    <div class="flex items-center gap-2 min-w-0">
-                        <h1 class="text-[15px] font-semibold tracking-tight text-[var(--nx-text)] truncate max-w-[36rem]">{{ $plan->name }}</h1>
-                        <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold {{ $roleText }} {{ $roleBg }}" title="{{ $roleTip }}">
-                            @svg($roleIcon,'w-3 h-3') {{ $roleLabel }}
-                        </span>
-                    </div>
-                    <div class="mt-1 flex items-center gap-1.5 text-xs text-[var(--nx-muted)] min-w-0">
-                        <span class="truncate">{{ $plan->planType?->name }}@if($parentPlan) · konsolidiert in „<span class="font-medium text-[var(--nx-text)]/80">{{ $parentPlan->name }}</span>“@endif @if(! $isFolder && count($usedIn))· speist „<span class="font-medium text-[var(--nx-text)]/80">{{ implode('“, „', $usedIn) }}</span>“@endif</span>
-                        {{-- Technische Details (Org-Knoten, Lock-Fenster) hinter dem Info-Tooltip, raus aus der Sichtzeile --}}
-                        <span class="shrink-0 inline-flex items-center text-[var(--nx-muted)]/60 hover:text-[var(--nx-muted)] cursor-help" tabindex="0"
-                              title="{{ $explain }}{{ $plan->organization_entity_id ? ' · Org-Knoten #'.$plan->organization_entity_id : '' }} · Bearbeitungsfenster: Vorlauf {{ $lock['lead_days'] }} T / Nachlauf {{ $lock['grace_days'] }} T">
-                            @svg('heroicon-o-information-circle','w-3.5 h-3.5')
-                        </span>
-                    </div>
+                {{-- Eine Zeile: Titel + Rolle + ⓘ. Der gesamte Kontext (Vorlage, Konsolidierung,
+                     speist, Org-Knoten, Sperr-Fenster) liegt im Tooltip — raus aus der Sichtzeile. --}}
+                <div class="flex items-center gap-2 min-w-0">
+                    <h1 class="text-[15px] font-semibold tracking-tight text-[var(--nx-text)] truncate max-w-[40rem]">{{ $plan->name }}</h1>
+                    <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold {{ $roleText }} {{ $roleBg }}" title="{{ $roleTip }}">
+                        @svg($roleIcon,'w-3 h-3') {{ $roleLabel }}
+                    </span>
+                    <span class="shrink-0 inline-flex items-center text-[var(--nx-muted)]/60 hover:text-[var(--nx-muted)] cursor-help" tabindex="0"
+                          title="{{ $plan->planType?->name }} · {{ $explain }}{{ $plan->organization_entity_id ? ' · Org-Knoten #'.$plan->organization_entity_id : '' }} · Bearbeitungsfenster: Vorlauf {{ $lock['lead_days'] }} T / Nachlauf {{ $lock['grace_days'] }} T">
+                        @svg('heroicon-o-information-circle','w-3.5 h-3.5')
+                    </span>
                 </div>
                 {{-- Rechts: Füllstand (nur Blatt) + dezenter Speicher-/Versions-Status --}}
                 <div class="shrink-0 flex items-center gap-3 text-[11px] whitespace-nowrap">
@@ -179,14 +169,11 @@
                                 <span class="absolute inset-y-0 left-0 rounded-full {{ $showActual ? 'bg-teal-500' : 'bg-[var(--nx-accent)]' }} transition-[width] duration-300" style="width: {{ $fillPct }}%"></span>
                             </span>
                             <span class="tabular-nums font-medium text-[var(--nx-text)]">{{ $fillDone }}/{{ $fillTotal }}</span>
-                            <span class="text-[var(--nx-muted)]">{{ $showActual ? 'Ist' : 'geplant' }}</span>
                         </div>
                         <span class="text-[var(--nx-line)]" aria-hidden="true">·</span>
                     @endif
-                    <div class="flex items-center gap-1.5 text-[var(--nx-muted)]" title="Jede Eingabe wird sofort gespeichert und versioniert — aktuelle Version {{ $plan->current_version }}">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                        gespeichert · v{{ $plan->current_version }}
-                    </div>
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 cursor-help" tabindex="0"
+                          title="Gespeichert — jede Eingabe wird sofort versioniert (aktuelle Version v{{ $plan->current_version }})"></span>
                 </div>
             </div>
 

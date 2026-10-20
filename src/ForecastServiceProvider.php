@@ -24,7 +24,6 @@
 namespace Platform\Forecast;
 
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Platform\Core\PlatformCore;
@@ -95,7 +94,7 @@ class ForecastServiceProvider extends ServiceProvider
         if (
             config()->has('forecast.routing') &&
             config()->has('forecast.navigation') &&
-            Schema::hasTable('modules')
+            PlatformCore::modulesTableExists()
         ) {
             /**
              * Modul bei PlatformCore registrieren

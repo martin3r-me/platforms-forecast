@@ -555,8 +555,10 @@
                                                     @endif
                                                     @if($hasIst)
                                                         <span class="tabular-nums font-semibold text-teal-700">{{ $signOf($rowKey, $istV) }}{{ $fmtRow($rowKey, $magOf($rowKey, $istV)) }}<span class="text-[10px] font-normal text-[var(--nx-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
+                                                    @elseif($cellEditable)
+                                                        <span class="fc-fill" title="Noch kein Ist erfasst — hier eintragen">–</span>
                                                     @else
-                                                        <span class="text-[var(--nx-muted)]/40 text-[11px]" title="Noch kein Ist erfasst{{ $cellEditable ? ' — hier eintragen' : '' }}">–</span>
+                                                        <span class="text-[var(--nx-muted)]/40 text-[11px]" title="Noch kein Ist erfasst">–</span>
                                                     @endif
                                                 </div>
                                                 @if($planV != 0 || $hasIst)
@@ -603,6 +605,8 @@
                                                     @php $sp = $meta[$rowKey]['spreadBy'][$col['bucket']] ?? 0; @endphp
                                                     @if($sp > 0)
                                                         <span class="tabular-nums italic text-[11px] text-[var(--nx-muted)]/55" title="verteilter Rest (nicht verbindlich)">≈&hairsp;{{ $signOf($rowKey, $sp) }}{{ $fmtRow($rowKey, $sp) }}</span>
+                                                    @elseif($cellEditable)
+                                                        <span class="fc-fill" title="Noch nicht geplant — hier eintragen">–</span>
                                                     @else
                                                         <span class="text-[var(--nx-muted)]/40">·</span>
                                                     @endif
@@ -822,6 +826,16 @@
         tr:hover .fc-mark, tr:focus-within .fc-mark { opacity: 1; }
         table.fc-dense .fc-mark { display: none; }
         @media (prefers-reduced-motion: reduce) { .fc-mark { transition: none; } }
+
+        /* Leeres, aber eingebbares Feld: „hier gehört ein Wert rein“ — Akzent-Strich
+           statt des grauen „·“ einer berechneten/leeren Zelle. So sieht man auf einen
+           Blick, welche Zellen noch zu planen sind, auch ohne erfassten Wert (kein V). */
+        .fc-fill { color: color-mix(in srgb, var(--nx-accent) 50%, transparent);
+            font-weight: 600; border-bottom: 1px dashed color-mix(in srgb, var(--nx-accent) 45%, transparent);
+            line-height: 1; padding-bottom: 1px; transition: color .12s ease, border-color .12s ease; }
+        tr:hover .fc-fill, tr:focus-within .fc-fill {
+            color: var(--nx-accent); border-bottom-color: color-mix(in srgb, var(--nx-accent) 70%, transparent); }
+        @media (prefers-reduced-motion: reduce) { .fc-fill { transition: none; } }
 
         /* Ergebniszeilen (DB I–IV, EBITDA, …) als zartes Akzent-Band absetzen:
            feine Linie oben + der bestehende Accent-Soft-Grund = klar lesbare Summe. */

@@ -353,7 +353,7 @@ class PlanView extends Component
             $resolved = $this->resolveInput($raw, $currentDisplayed);
         }
         if ($resolved === null) {
-            throw new \InvalidArgumentException('Zahl oder Rechnung eingeben — z. B. 100 · +50 · +5% · *1,1 · /2 · -500');
+            throw new \InvalidArgumentException('Zahl oder Rechnung eingeben — z. B. 100 · -2000 (setzt −2000, z. B. Entlastung) · +50 · +5% · *1,1 · /2');
         }
         $store = round($isFactor ? $resolved / 100 : $resolved, 6);
 
@@ -362,7 +362,7 @@ class PlanView extends Component
 
     /**
      * Eingabe zu einem absoluten Wert auflösen — inkl. Inline-Operatoren relativ zum aktuellen Wert:
-     *   100 → setzen · +50 → +50 · -500 → −500 · *1,1 → ×1,1 · /2 → ÷2 · +5% → +5 % · -5% → −5 %.
+     *   100 → setzen · -2000 → setzt −2000 (Vorzeichen, kein Abziehen) · +50 → +50 · *1,1 → ×1,1 · /2 → ÷2 · +5% → +5 % · -5% → −5 %.
      * Ohne führenden Operator = setzen (auch "19%" → 19 in der Anzeige-Ebene).
      */
     protected function resolveInput(string $raw, float $current): ?float
@@ -391,6 +391,12 @@ class PlanView extends Component
         if ($op === null) {
             return $n; // setzen
         }
+        // „-2000“ (Minus direkt vor einer Zahl, ohne %) SETZT einen negativen Wert — das
+        // Vorzeichen einer Entlastung (z. B. verliehene Köche), kein Abziehen vom aktuellen
+        // Wert. Die relativen Operatoren +, *, / und die %-Formen (+5 %, -5 %) bleiben.
+        if ($op === '-' && ! $pct) {
+            return -$n;
+        }
         if ($pct) {
             return match ($op) {
                 '+' => $current * (1 + $n / 100),
@@ -403,7 +409,6 @@ class PlanView extends Component
 
         return match ($op) {
             '+' => $current + $n,
-            '-' => $current - $n,
             '*' => $current * $n,
             '/' => $n != 0.0 ? $current / $n : $current,
             default => null,

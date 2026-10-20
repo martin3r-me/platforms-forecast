@@ -26,18 +26,24 @@
             return $v < 0 ? '−' : ($v > 0 ? '+' : '');
         }
         $d = $info['direction'] ?? 'neutral';
-        if ($d === 'expense') return '−';
         if ($d === 'neutral') return '';
-        // income: Vorzeichen folgt dem WERT — negative Summen (z. B. „Sonstige Umsätze gesamt“ < 0)
-        // zeigen „−“ statt fälschlich „+“ vor einer negativen Zahl.
-        return $v < 0 ? '−' : '+';
+        // Vorzeichen = WIRKUNG aufs Ergebnis. Aufwand (v>0) senkt → „−“; eine Entlastung
+        // (negativer Aufwand, z. B. verliehene Köche) hebt → „+“. Ertrag spiegelbildlich.
+        // So ist eine negative Kostenzeile als „+“ erkennbar statt wie Kosten „−“.
+        $eff = $d === 'expense' ? -$v : $v;
+        return $eff > 0 ? '+' : ($eff < 0 ? '−' : '');
     };
     $toneOf = function ($rk, $v) use ($rowInfo) {
         $info = $rowInfo[$rk] ?? [];
-        $d = (($info['signMode'] ?? 'direction') === 'net')
-            ? ($v < 0 ? 'expense' : ($v > 0 ? 'income' : 'neutral'))
-            : ($info['direction'] ?? 'neutral');
-        return $d === 'income' ? 'text-emerald-600' : ($d === 'expense' ? 'text-rose-600' : 'text-[var(--nx-text)]');
+        if (($info['signMode'] ?? 'direction') === 'net') {
+            return $v < 0 ? 'text-rose-600' : ($v > 0 ? 'text-emerald-600' : 'text-[var(--nx-text)]');
+        }
+        $d = $info['direction'] ?? 'neutral';
+        if ($d === 'neutral') return 'text-[var(--nx-text)]';
+        // Farbe nach Wirkung: Aufwand rot, Ertrag grün — eine Entlastung (negativer
+        // Aufwand) kippt auf grün, weil sie das Ergebnis hebt.
+        $eff = $d === 'expense' ? -$v : $v;
+        return $eff > 0 ? 'text-emerald-600' : ($eff < 0 ? 'text-rose-600' : 'text-[var(--nx-text)]');
     };
     $magOf = fn ($rk, $v) => (($rowInfo[$rk]['signMode'] ?? 'direction') === 'net') ? abs($v) : $v;
     $unitOf = fn ($rk) => $rowInfo[$rk]['unit'] ?? '';
@@ -408,6 +414,10 @@
                                     // Verteilt sich eine Grob-Eingabe durch REPLIZIEREN (Rate/Bestand) statt AUFTEILEN (Fluss)?
                                     // Spiegelt exakt das $constantDown der Anzeige, damit Affordanz und Verhalten übereinstimmen.
                                     $rowReplicates = ($rowInfo[$rowKey]['nonAdditive'] ?? false) || (($rowInfo[$rowKey]['timeAgg'] ?? 'flow') !== 'flow');
+                                    // Richtungs-Tint am Label: nur Eingabe-Zeilen (Formeln/Ergebnisse behalten ihr
+                                    // Styling). Aufwand → rot, Ertrag → grün, Messgröße/Faktor → kein Tint.
+                                    $dir = $rowInfo[$rowKey]['direction'] ?? 'neutral';
+                                    $dirTint = $isF ? '' : ($dir === 'expense' ? 'fc-dir-exp' : ($dir === 'income' ? 'fc-dir-inc' : ''));
                                 @endphp
                                 @if($sec && $sec !== $lastSection)
                                     <tr class="fc-sec">
@@ -424,7 +434,7 @@
                                 @php $lastSection = $sec; @endphp
                                 <tr class="group/row {{ $isResult ? 'fc-result bg-[var(--nx-accent-soft)]' : ($isF ? 'bg-[var(--nx-hover)]/40' : '') }}"@if($sec) x-show="! isC({{ \Illuminate\Support\Js::from($sec) }})"@endif>
                                     {{-- Zeilen-Kopf --}}
-                                    <td class="sticky left-0 z-10 bg-[var(--nx-surface)] {{ $isResult ? 'shadow-[inset_0_0_0_100vw_var(--nx-accent-soft)]' : ($isF ? 'shadow-[inset_0_0_0_100vw_var(--nx-hover)]' : '') }} px-3 py-1 border-b border-[var(--nx-line)]/40 transition-colors">
+                                    <td class="sticky left-0 z-10 bg-[var(--nx-surface)] {{ $isResult ? 'shadow-[inset_0_0_0_100vw_var(--nx-accent-soft)]' : ($isF ? 'shadow-[inset_0_0_0_100vw_var(--nx-hover)]' : $dirTint) }} px-3 py-1 border-b border-[var(--nx-line)]/40 transition-colors">
                                         <div class="flex items-center gap-1.5">
                                             @if($isF)<span class="text-[9px] font-bold px-1 rounded bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]" title="{{ ! empty($rowInfo[$rowKey]['expr']) ? 'Ausdruck: '.$rowInfo[$rowKey]['expr'] : 'Berechnet: ergibt sich aus anderen Zeilen — nicht eingebbar' }}">ƒ</span>@endif
                                             @if($isMaster && ! $isF)<span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600 inline-flex items-center gap-0.5" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch — hier nicht direkt eingebbar">↑</span>@endif
@@ -442,7 +452,7 @@
                                                     @svg('heroicon-o-magnifying-glass-plus','w-3 h-3') Detailplan
                                                 </a>
                                             @endif
-                                            <span class="fc-meta text-[10px] text-[var(--nx-muted)]/55 whitespace-nowrap ml-0.5">@if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else{{ $rowInfo[$rowKey]['direction'] === 'income' ? 'Ertrag +' : ($rowInfo[$rowKey]['direction'] === 'expense' ? 'Aufwand −' : 'Messgröße') }}@endif @if($unitOf($rowKey))· {{ $unitOf($rowKey) }}@endif</span>
+                                            <span class="fc-meta text-[10px] text-[var(--nx-muted)]/55 whitespace-nowrap ml-0.5">@if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else<span class="{{ $dir === 'income' ? 'text-emerald-600/75' : ($dir === 'expense' ? 'text-rose-600/75' : '') }}">{{ $dir === 'income' ? 'Ertrag +' : ($dir === 'expense' ? 'Aufwand −' : 'Messgröße') }}</span>@endif @if($unitOf($rowKey))· {{ $unitOf($rowKey) }}@endif</span>
                                         </div>
                                     </td>
 
@@ -866,6 +876,16 @@
         /* Ergebniszeilen (DB I–IV, EBITDA, …) als zartes Akzent-Band absetzen:
            feine Linie oben + der bestehende Accent-Soft-Grund = klar lesbare Summe. */
         tr.fc-result > td { border-top: 1px solid color-mix(in srgb, var(--nx-accent) 22%, transparent); }
+
+        /* Eingabe-Zeilen nach Richtung kennzeichnen — am Zeilen-Label, nicht über die
+           Datenspalten geflutet: Kosten rot, Umsatz grün. So liest man die Natur der
+           Zeile auf einen Blick; eine Entlastung (negativer Aufwand) fällt dann als
+           grünes „+“ sofort auf, statt wie Kosten auszusehen. Streifen links + zarter
+           Grund, beides als inset-Schatten (stört den haftenden Hintergrund nicht). */
+        td.fc-dir-exp { box-shadow: inset 3px 0 0 0 color-mix(in srgb, #f43f5e 55%, transparent),
+            inset 0 0 0 100vw color-mix(in srgb, #f43f5e 6%, transparent); }
+        td.fc-dir-inc { box-shadow: inset 3px 0 0 0 color-mix(in srgb, #10b981 55%, transparent),
+            inset 0 0 0 100vw color-mix(in srgb, #10b981 6%, transparent); }
 
         /* Kompakt-Modus: geringere Zeilenhöhe + Nebeninfos aus → mehr Zeilen auf einen Blick.
            Generisch (greift für jeden Plan-Typ, keine Zeilen-Spezifika). */

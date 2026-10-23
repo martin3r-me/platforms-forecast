@@ -19,31 +19,25 @@
     }
     $sectionList = array_keys($sectionCounts);
 
-    // Vorzeichen / Farbton / Betrag je nach Zeilen-Richtung (bzw. Netto-Wert)
-    $signOf = function ($rk, $v) use ($rowInfo) {
-        $info = $rowInfo[$rk] ?? [];
-        if (($info['signMode'] ?? 'direction') === 'net') {
-            return $v < 0 ? '−' : ($v > 0 ? '+' : '');
-        }
-        $d = $info['direction'] ?? 'neutral';
-        if ($d === 'neutral') return '';
-        // Vorzeichen = WIRKUNG aufs Ergebnis. Aufwand (v>0) senkt → „−“; eine Entlastung
-        // (negativer Aufwand, z. B. verliehene Köche) hebt → „+“. Ertrag spiegelbildlich.
-        // So ist eine negative Kostenzeile als „+“ erkennbar statt wie Kosten „−“.
-        $eff = $d === 'expense' ? -$v : $v;
-        return $eff > 0 ? '+' : ($eff < 0 ? '−' : '');
+    // Vorzeichen / Farbton / Betrag — Weg C: Beträge OHNE Vorzeichen, die Richtung trägt
+    // die FARBE (Ausgabe rot, Einnahme grün). Ein „−“ erscheint nur bei einem tatsächlich
+    // negativen Wert: Korrektur/Entlastung in einer Kostenzeile oder ein Verlust in einer
+    // Ergebniszeile. Kein „+“. Intern bleibt „Betrag + Richtung“ (Import/Kennzahlen stabil).
+    $signOf = function ($rk, $v) {
+        return $v < 0 ? '−' : '';
     };
     $toneOf = function ($rk, $v) use ($rowInfo) {
         $info = $rowInfo[$rk] ?? [];
         if (($info['signMode'] ?? 'direction') === 'net') {
+            // Netto-/Saldozeile: Farbe nach Wert.
             return $v < 0 ? 'text-rose-600' : ($v > 0 ? 'text-emerald-600' : 'text-[var(--nx-text)]');
         }
         $d = $info['direction'] ?? 'neutral';
-        if ($d === 'neutral') return 'text-[var(--nx-text)]';
-        // Farbe nach Wirkung: Aufwand rot, Ertrag grün — eine Entlastung (negativer
-        // Aufwand) kippt auf grün, weil sie das Ergebnis hebt.
-        $eff = $d === 'expense' ? -$v : $v;
-        return $eff > 0 ? 'text-emerald-600' : ($eff < 0 ? 'text-rose-600' : 'text-[var(--nx-text)]');
+        // Ausgabe immer rot. Einnahme grün, aber ein negativer Wert (Verlust in einer
+        // Ergebniszeile, z. B. DB III < 0) kippt auf rot. Messgröße nur bei Negativ rot.
+        if ($d === 'expense') return 'text-rose-600';
+        if ($d === 'income')  return $v < 0 ? 'text-rose-600' : 'text-emerald-600';
+        return $v < 0 ? 'text-rose-600' : 'text-[var(--nx-text)]';
     };
     $magOf = fn ($rk, $v) => (($rowInfo[$rk]['signMode'] ?? 'direction') === 'net') ? abs($v) : $v;
     $unitOf = fn ($rk) => $rowInfo[$rk]['unit'] ?? '';
@@ -452,7 +446,7 @@
                                                     @svg('heroicon-o-magnifying-glass-plus','w-3 h-3') Detailplan
                                                 </a>
                                             @endif
-                                            <span class="fc-meta text-[10px] text-[var(--nx-muted)]/55 whitespace-nowrap ml-0.5">@if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else<span class="{{ $dir === 'income' ? 'text-emerald-600/75' : ($dir === 'expense' ? 'text-rose-600/75' : '') }}">{{ $dir === 'income' ? 'Ertrag +' : ($dir === 'expense' ? 'Aufwand −' : 'Messgröße') }}</span>@endif @if($unitOf($rowKey))· {{ $unitOf($rowKey) }}@endif</span>
+                                            <span class="fc-meta text-[10px] text-[var(--nx-muted)]/55 whitespace-nowrap ml-0.5">@if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else<span class="{{ $dir === 'income' ? 'text-emerald-600/75' : ($dir === 'expense' ? 'text-rose-600/75' : '') }}">{{ $dir === 'income' ? 'Ertrag' : ($dir === 'expense' ? 'Aufwand' : 'Messgröße') }}</span>@endif @if($unitOf($rowKey))· {{ $unitOf($rowKey) }}@endif</span>
                                         </div>
                                     </td>
 

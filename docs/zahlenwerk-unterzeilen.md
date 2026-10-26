@@ -1,6 +1,6 @@
 # Zahlenwerk — Unterzeilen / Aufschlüsselung einer Zelle
 
-**Status:** Umgesetzt (Code, noch nicht deployed) · **Stand:** 2026-10-26
+**Status:** Umgesetzt · deployed · live verifiziert · **Stand:** 2026-10-26
 
 > **Umsetzungs-Hinweis (gewählter Ansatz):** Der Zellwert in `forecast_entries` wird beim
 > Schreiben synchron als **Σ der Unterzeilen** gepflegt (`PlanService::setBreakdown`). Dadurch
@@ -109,8 +109,13 @@ greift per Konstruktion — die Unterzeilen liegen in einer eigenen Tabelle, die
 liest; Rollup (`OrgRollup`) nutzt den reconciled Zellwert, ein DATEV/CSV-Export existiert im
 Package noch nicht.
 
-**Offen bis Live:** Migration auf dem Server ausführen; Live-Klick-Test (Zelle aufschlüsseln →
-Summe oben läuft mit, Jahr→Monat verteilt, Entlastung grün).
+**Live verifiziert (2026-10-26, Chrome, office.bhgdigital.de, Plan „BHG.DIGITAL
+Liquiditätsplanung (Cash-Basis)"):** Migration deployed; Hover-Auslöser + Aufschlüsseln-Modal
+öffnen; benannte Unterzeilen mit Live-Summe; Speichern → Zelle = Σ (57.676), read-only mit
+Marker „Aufgeschlüsselt"; Persistenz-Round-Trip (reopen zeigt gespeicherte Zeilen); negative
+Summe = grün (Entlastung); Jahr→Quartal→Monat-Verteilung wie bei direktem Jahreswert;
+„Auszahlungen gesamt"-Rollup unverändert; leere Liste hebt Aufschlüsselung auf → Zelle wieder
+Direktwert. z-index-Fix bestätigt (Modal liegt über Tabellenkopf). Kein JS-Fehler.
 
 ## 6. Empfehlung zum Vorgehen
 - **Nicht** im v1-Rollout (erster Planer-Durchlauf Rainer) — kein Mehrwert für den ersten Tipp-Durchgang, vergrößert die Fehlerfläche.

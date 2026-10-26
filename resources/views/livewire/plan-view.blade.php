@@ -33,9 +33,12 @@
             return $v < 0 ? 'text-rose-600' : ($v > 0 ? 'text-emerald-600' : 'text-[var(--nx-text)]');
         }
         $d = $info['direction'] ?? 'neutral';
-        // Ausgabe immer rot. Einnahme grün, aber ein negativer Wert (Verlust in einer
-        // Ergebniszeile, z. B. DB III < 0) kippt auf rot. Messgröße nur bei Negativ rot.
-        if ($d === 'expense') return 'text-rose-600';
+        // Ausgabe rot — ein NEGATIVER Wert in einer Kostenzeile ist eine Entlastung/
+        // Gutschrift (ergebnis­erhöhend) und kippt auf grün (Meeting Broich 26.10.:
+        // „negativer Wert muss grün werden bei Kosten — bei variablen UND Fixkosten").
+        // Einnahme grün, negativer Wert (Verlust, z. B. DB III < 0) kippt auf rot.
+        // Messgröße nur bei Negativ rot.
+        if ($d === 'expense') return $v < 0 ? 'text-emerald-600' : 'text-rose-600';
         if ($d === 'income')  return $v < 0 ? 'text-rose-600' : 'text-emerald-600';
         return $v < 0 ? 'text-rose-600' : 'text-[var(--nx-text)]';
     };

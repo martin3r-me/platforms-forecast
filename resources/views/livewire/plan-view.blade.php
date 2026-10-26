@@ -545,6 +545,10 @@
                                                 : (($cellObj && ($cellObj['entered'] ?? false)) ? ($cellObj['value'] ?? 0) : null);
                                             $pfRaw = $pfSrc === null ? ''
                                                 : rtrim(rtrim(number_format($isFu ? $pfSrc * 100 : (float) $pfSrc, 4, '.', ''), '0'), '.');
+                                            // Zusatz-Flags fürs Rechtsklick-Menü als fertiger Attribut-String
+                                            // (robuster als verkettete inline-@if/@endif im Tag).
+                                            $cellFlags = $cellIsBroken ? ' data-fc-broken="1"' : (($canBreakdown && ! $cellIsBroken) ? ' data-fc-canbreak="1"' : '');
+                                            if ($cellFromBreakdown) { $cellFlags .= ' data-fc-derived="1"'; }
                                         @endphp
                                         <td class="relative text-right px-2 py-1 border-b border-[var(--nx-line)]/40 whitespace-nowrap align-top transition-colors
                                             {{ $cellState === 'open'
@@ -558,7 +562,7 @@
                                                     : 'group-hover/row:bg-[var(--nx-hover)]/60'))) }}"
                                             data-fc-r="{{ $gridRowIdx }}" data-fc-c="{{ $loop->index }}"
                                             data-fc-row="{{ $rowKey }}" data-fc-col="{{ $col['bucket'] }}"
-                                            @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif@if($cellIsBroken) data-fc-broken="1"@endif@if($canBreakdown && ! $cellIsBroken) data-fc-canbreak="1"@endif@if($cellFromBreakdown) data-fc-derived="1"@endif>
+                                            @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif{!! $cellFlags !!}>
                                             @if($cellIsBroken)
                                                 <button type="button" wire:click.stop="openBreakdown('{{ $rowKey }}', '{{ $bkt }}')" class="fc-mark absolute top-1 left-1.5 text-[var(--nx-accent)]/80 hover:text-[var(--nx-accent)]" title="Aufgeschlüsselt — Wert = Summe der Unterzeilen. Klicken zum Bearbeiten.">
                                                     @svg('heroicon-o-list-bullet','w-3 h-3')

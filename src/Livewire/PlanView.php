@@ -70,6 +70,22 @@ class PlanView extends Component
      *  Baum-Konsolidierung) → sofort sichtbar. wire:init="loadGrid" lädt das echte Grid nach. */
     public bool $ready = false;
 
+    /** Aufschlüsseln-Fenster: offene Zelle + ihre Unterzeilen (Label/Betrag) zum Bearbeiten.
+     *  Eine aufgeschlüsselte Zelle trägt nicht mehr einen Direktwert, sondern die Summe ihrer
+     *  benannten Unterposten (Nachvollziehbarkeit; geht nicht in die DATEV). */
+    public bool $breakdownOpen = false;
+
+    public ?string $breakdownRow = null;
+
+    public ?string $breakdownBucket = null;
+
+    public ?string $breakdownRowLabel = null;
+
+    public bool $breakdownIsFactor = false;
+
+    /** @var list<array{label:string, value:string}> */
+    public array $breakdownItems = [];
+
     public function mount(string $uuid): void
     {
         $this->uuid = $uuid;
@@ -173,6 +189,131 @@ class PlanView extends Component
         } catch (\Throwable $e) {
             $this->cellError = 'Konnte nicht speichern.';
         }
+    }
+
+    /**
+     * Aufschlüsseln-Fenster für eine Zelle öffnen (lädt vorhandene Unterzeilen; sonst eine leere
+     * Startzeile). Nur für offene Eingabezellen oder bereits aufgeschlüsselte Zellen.
+     */
+    public function openBreakdown(string $rowKey, string $bucket): void
+    {
+        $this->cellError = null;
+        $plan = $this->plan();
+        $meta = $this->rowMeta($plan, $rowKey);
+        $channel = $this->channel();
+
+        $gate = (new CellEditability())->check($plan, $rowKey, $bucket, $channel);
+        if (! $gate['editable'] && $gate['state'] !== 'breakdown') {
+            $this->cellError = $gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.';
+
+            return;
+        }
+
+        $items = [];
+        foreach ((new PlanService())->getBreakdown($plan, $rowKey, $bucket, $channel) as $d) {
+            $items[] = ['label' => $d['label'], 'value' => $this->breakdownFmt((float) $d['value'], $meta['isFactor'])];
+        }
+        if ($items === []) {
+            $items[] = ['label' => '', 'value' => ''];
+        }
+
+        $this->breakdownItems = $items;
+        $this->breakdownRow = $rowKey;
+        $this->breakdownBucket = $bucket;
+        $this->breakdownRowLabel = $meta['label'];
+        $this->breakdownIsFactor = $meta['isFactor'];
+        $this->breakdownOpen = true;
+    }
+
+    public function addBreakdownItem(): void
+    {
+        $this->breakdownItems[] = ['label' => '', 'value' => ''];
+    }
+
+    public function removeBreakdownItem(int $i): void
+    {
+        unset($this->breakdownItems[$i]);
+        $this->breakdownItems = array_values($this->breakdownItems);
+        if ($this->breakdownItems === []) {
+            $this->breakdownItems[] = ['label' => '', 'value' => ''];
+        }
+    }
+
+    public function closeBreakdown(): void
+    {
+        $this->breakdownOpen = false;
+        $this->breakdownRow = null;
+        $this->breakdownBucket = null;
+        $this->breakdownRowLabel = null;
+        $this->breakdownItems = [];
+    }
+
+    /** Laufende Summe der Unterzeilen in der Anzeige-Ebene (Faktor = %) — für das Modal. */
+    public function breakdownSum(): float
+    {
+        $sum = 0.0;
+        foreach ($this->breakdownItems as $it) {
+            $n = $this->parseNumber(trim((string) ($it['value'] ?? '')));
+            if ($n !== null) {
+                $sum += $n;
+            }
+        }
+
+        return round($sum, 6);
+    }
+
+    /**
+     * Unterzeilen speichern: Werte aus der Anzeige-Ebene in die Speicher-Ebene (Faktor ÷100),
+     * dann über den Service die Zelle = Σ Unterzeilen setzen. Leere Liste hebt die
+     * Aufschlüsselung auf.
+     */
+    public function saveBreakdown(): void
+    {
+        $this->cellError = null;
+        $this->editNonce++;
+
+        if ($this->breakdownRow === null || $this->breakdownBucket === null) {
+            return;
+        }
+
+        $plan = $this->plan();
+        $isFactor = $this->breakdownIsFactor;
+
+        $items = [];
+        foreach ($this->breakdownItems as $it) {
+            $label = trim((string) ($it['label'] ?? ''));
+            $rawVal = trim((string) ($it['value'] ?? ''));
+            if ($label === '' && $rawVal === '') {
+                continue; // leere Zeile ignorieren
+            }
+            $num = $this->parseNumber($rawVal);
+            if ($num === null) {
+                $this->cellError = 'Betrag unlesbar bei „'.($label !== '' ? $label : 'Position').'" — bitte eine Zahl eingeben.';
+
+                return;
+            }
+            $store = round($isFactor ? $num / 100 : $num, 6);
+            $items[] = ['label' => $label !== '' ? $label : 'Position', 'value' => $store];
+        }
+
+        try {
+            (new PlanService())->setBreakdown($plan, $this->breakdownRow, $this->breakdownBucket, $items, Auth::id(), enforceGate: true, channel: $this->channel());
+            $this->lastEdit = ['cells' => [['row' => $this->breakdownRow, 'bucket' => $this->breakdownBucket]], 'count' => 1, 'label' => $this->breakdownRowLabel, 'action' => 'aufgeschlüsselt'];
+            $this->closeBreakdown();
+        } catch (\InvalidArgumentException|\DomainException $e) {
+            $this->cellError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->cellError = 'Konnte nicht speichern.';
+        }
+    }
+
+    /** Betrag für die Modal-Eingabe formatieren (Faktor in %-Ebene, DE-Dezimalkomma). */
+    private function breakdownFmt(float $store, bool $isFactor): string
+    {
+        $v = $isFactor ? $store * 100 : $store;
+        $s = rtrim(rtrim(number_format($v, 6, ',', ''), '0'), ',');
+
+        return $s === '' ? '0' : $s;
     }
 
     /**
@@ -950,7 +1091,16 @@ class PlanView extends Component
         }
         $contextOther = $context->filter(fn ($pp) => empty($inTree[$pp->id]))->values();
 
+        // Aufgeschlüsselte Zellen (row_key|bucket_key) → Marker + Read-only in der Anzeige.
+        $breakdownCells = [];
+        try {
+            $breakdownCells = array_flip((new PlanService())->breakdownCells($plan, $this->channel()));
+        } catch (\Throwable $e) {
+            $breakdownCells = [];
+        }
+
         return view('forecast::livewire.plan-view', [
+            'breakdownCells' => $breakdownCells,
             'parentPlan' => $parentPlan,
             'childPlans' => $childPlans,
             'fromPlan' => $fromPlan,

@@ -1,6 +1,13 @@
 # Zahlenwerk — Unterzeilen / Aufschlüsselung einer Zelle
 
-**Status:** Konzept / Machbarkeit · **Stand:** 2026-10-26
+**Status:** Umgesetzt (Code, noch nicht deployed) · **Stand:** 2026-10-26
+
+> **Umsetzungs-Hinweis (gewählter Ansatz):** Der Zellwert in `forecast_entries` wird beim
+> Schreiben synchron als **Σ der Unterzeilen** gepflegt (`PlanService::setBreakdown`). Dadurch
+> bleiben **Reconciliation, Zeitverteilung (Jahr→Monat), Rollup und Export unverändert** — sie
+> sehen weiter nur den fertigen Zellwert. Das ist bewusst risikoarm gewählt statt des
+> alternativen „estimate=null + Detail-Kinder im Node"-Wegs; das Ergebnis (Zelle = Σ) ist
+> identisch. Siehe „Umgesetzte Teile" unten.
 **Herkunft:** Rollout-Meeting Broich Catering (26.10.2026) — Wunsch der Planer (Olli, Christian), Rahmen von Martin. Von Hendric in Richtung Rolling Forecast eingeordnet.
 
 ---
@@ -82,6 +89,28 @@ DATEV-/Rollup-Export zieht weiterhin nur die Zeilen-Summe (Oberkategorie). `fore
 - Verhalten, wenn eine aufgeschlüsselte Jahreszelle zusätzlich auf Monatsebene „grob verteilt" bearbeitet wird — Vorrang-Regel definieren (vermutlich: Aufschlüsselung dominiert die betroffene Ebene).
 - Historie/Changelog (`forecast_changes`) für Detail-Einträge mitschreiben?
 - Rechte: wer darf aufschlüsseln vs. nur Summe sehen.
+
+## 5b. Umgesetzte Teile (2026-10-26)
+
+- **Migration** `2026_10_26_100015_create_forecast_entry_details_table.php` + Model
+  `ForecastEntryDetail` (team/plan/row/bucket/channel/level/label/value signiert/ordinal).
+- **PlanService:** `getBreakdown`, `setBreakdown` (ersetzt Unterzeilen, pflegt Zellwert = Σ,
+  loggt Change-Op `breakdown` mit payload), `breakdownCells` (UI-Set). Leere Liste hebt die
+  Aufschlüsselung auf (letzter Summenwert bleibt als Direktwert). `setCell`/`clearCell`
+  um die Invariante ergänzt: direkte Zelle gesperrt bzw. Unterzeilen mit gelöscht.
+- **CellEditability:** neuer Zustand `breakdown` (nicht direkt tippbar, Modal erreichbar).
+- **PlanView (Livewire):** Properties + `openBreakdown/addBreakdownItem/removeBreakdownItem/
+  saveBreakdown/closeBreakdown/breakdownSum`; `breakdownCells` ans View-Array.
+- **Blade:** Marker + Read-only auf aufgeschlüsselten Zellen, Hover-Auslöser auf offenen
+  Eingabezellen, Modal (Label+Betrag, Live-Summe, Entlastung negativ=grün).
+
+**Reconciliation:** keine Änderung nötig (Zellwert trägt bereits die Summe). **Export-Guard:**
+greift per Konstruktion — die Unterzeilen liegen in einer eigenen Tabelle, die nur der Service
+liest; Rollup (`OrgRollup`) nutzt den reconciled Zellwert, ein DATEV/CSV-Export existiert im
+Package noch nicht.
+
+**Offen bis Live:** Migration auf dem Server ausführen; Live-Klick-Test (Zelle aufschlüsseln →
+Summe oben läuft mit, Jahr→Monat verteilt, Entlastung grün).
 
 ## 6. Empfehlung zum Vorgehen
 - **Nicht** im v1-Rollout (erster Planer-Durchlauf Rainer) — kein Mehrwert für den ersten Tipp-Durchgang, vergrößert die Fehlerfläche.

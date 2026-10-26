@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Platform\Forecast\Enums\TimeLevel;
 use Platform\Forecast\Models\ForecastChange;
 use Platform\Forecast\Models\ForecastEntry;
+use Platform\Forecast\Models\ForecastEntryDetail;
 use Platform\Forecast\Models\ForecastPlan;
 use Platform\Forecast\Models\ForecastPlanType;
 use Platform\Forecast\Models\ForecastRow;
@@ -90,6 +91,13 @@ final class PlanService
             if (! $gate['editable']) {
                 throw new \DomainException($gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.');
             }
+        }
+
+        // Invariante: eine aufgeschlüsselte Zelle (hat Unterzeilen) ist nicht direkt beschreibbar —
+        // ihr Wert IST die Summe der Unterzeilen. Änderungen laufen über setBreakdown().
+        if (ForecastEntryDetail::where('plan_id', $plan->id)
+            ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->exists()) {
+            throw new \DomainException('Diese Zelle ist aufgeschlüsselt — bitte über das Aufschlüsseln-Fenster ändern.');
         }
 
         return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $value, $mode, $userId, $channel) {
@@ -259,10 +267,118 @@ final class PlanService
                 'new_value' => null, 'new_mode' => null,
             ]);
 
+            // Unterzeilen der Zelle mit entfernen (sonst bliebe die Aufschlüsselung verwaist).
+            ForecastEntryDetail::where('plan_id', $plan->id)
+                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->delete();
+
             $existing->delete();
 
             return true;
         });
+    }
+
+    /**
+     * Lädt die Unterzeilen einer Zelle (geordnet nach ordinal).
+     *
+     * @return list<array{id:int, label:string, value:float, ordinal:int}>
+     */
+    public function getBreakdown(ForecastPlan $plan, string $rowKey, string $bucketKey, string $channel = 'plan'): array
+    {
+        return ForecastEntryDetail::where('plan_id', $plan->id)
+            ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)
+            ->orderBy('ordinal')->orderBy('id')
+            ->get(['id', 'label', 'value', 'ordinal'])
+            ->map(fn ($d) => ['id' => (int) $d->id, 'label' => (string) $d->label, 'value' => (float) $d->value, 'ordinal' => (int) $d->ordinal])
+            ->all();
+    }
+
+    /**
+     * Ersetzt die Unterzeilen einer Zelle durch die übergebene Liste und hält den Zellwert in
+     * forecast_entries synchron = Σ der Unterzeilen (gespeichert als Mode::Detail). Eine leere
+     * Liste hebt die Aufschlüsselung auf: Unterzeilen werden entfernt, der zuletzt errechnete
+     * Summenwert bleibt als Direktwert stehen und die Zelle ist wieder frei tippbar.
+     *
+     * Reconciliation/Zeitverteilung/Rollup/Export bleiben unberührt — sie sehen weiter nur den
+     * fertigen Zellwert.
+     *
+     * @param  list<array{label?:string, value?:float|int}>  $items
+     * @return array{items:list<array{label:string, value:float, ordinal:int}>, sum:float, count:int}
+     */
+    public function setBreakdown(ForecastPlan $plan, string $rowKey, string $bucketKey, array $items, ?int $userId = null, bool $enforceGate = false, string $channel = 'plan'): array
+    {
+        if ($enforceGate) {
+            $gate = (new CellEditability())->check($plan, $rowKey, $bucketKey, $channel);
+            // 'breakdown' = bereits aufgeschlüsselt → Bearbeiten erlaubt; sonst muss die Zelle offen sein.
+            if (! $gate['editable'] && $gate['state'] !== 'breakdown') {
+                throw new \DomainException($gate['reason'] ?? 'Diese Zelle ist nicht eingebbar.');
+            }
+        }
+
+        return DB::transaction(function () use ($plan, $rowKey, $bucketKey, $items, $userId, $channel) {
+            $plan = ForecastPlan::whereKey($plan->getKey())->lockForUpdate()->first() ?? $plan;
+            $level = TimeLevel::fromKey($bucketKey);
+
+            // Sanitisieren: leere Labels raus, auf 6 Nachkommastellen runden, Reihenfolge = ordinal.
+            $clean = [];
+            foreach (array_values($items) as $i => $it) {
+                $label = trim((string) ($it['label'] ?? ''));
+                if ($label === '') {
+                    continue;
+                }
+                $clean[] = ['label' => $label, 'value' => round((float) ($it['value'] ?? 0), 6), 'ordinal' => $i];
+            }
+
+            $oldEntry = ForecastEntry::where('plan_id', $plan->id)
+                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->first();
+            $oldValue = $oldEntry ? (float) $oldEntry->value : null;
+
+            // Unterzeilen vollständig ersetzen.
+            ForecastEntryDetail::where('plan_id', $plan->id)
+                ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->delete();
+
+            $sum = 0.0;
+            foreach ($clean as $c) {
+                ForecastEntryDetail::create([
+                    'team_id' => $plan->team_id, 'plan_id' => $plan->id,
+                    'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel,
+                    'level' => $level->value, 'label' => $c['label'], 'value' => $c['value'], 'ordinal' => $c['ordinal'],
+                ]);
+                $sum += $c['value'];
+            }
+            $sum = round($sum, 6);
+
+            // Zellwert synchron pflegen. Bei leerer Liste bleibt der bisherige Direktwert stehen.
+            if ($clean !== []) {
+                ForecastEntry::updateOrCreate(
+                    ['plan_id' => $plan->id, 'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel],
+                    ['team_id' => $plan->team_id, 'level' => $level->value, 'value' => $sum, 'mode' => Mode::Detail->value],
+                );
+            }
+
+            $this->recordChange($plan, $userId, 'breakdown', [
+                'row_key' => $rowKey, 'bucket_key' => $bucketKey, 'channel' => $channel, 'level' => $level->value,
+                'old_value' => $oldValue, 'old_mode' => Mode::Detail->value,
+                'new_value' => $clean !== [] ? $sum : $oldValue, 'new_mode' => Mode::Detail->value,
+                'payload' => ['breakdown' => $clean],
+            ]);
+
+            return ['items' => $clean, 'sum' => $sum, 'count' => count($clean)];
+        });
+    }
+
+    /**
+     * Die Zellen (als "row_key|bucket_key"), die im Plan/Kanal aufgeschlüsselt sind —
+     * für die UI (Marker + Read-only), in EINER Abfrage.
+     *
+     * @return list<string>
+     */
+    public function breakdownCells(ForecastPlan $plan, string $channel = 'plan'): array
+    {
+        return ForecastEntryDetail::where('plan_id', $plan->id)->where('channel', $channel)
+            ->select('row_key', 'bucket_key')->distinct()
+            ->get()
+            ->map(fn ($d) => $d->row_key.'|'.$d->bucket_key)
+            ->all();
     }
 
     /** Soft-Delete einer Planung (reversibel; Kind-Instanzen werden NICHT mitgelöscht). */

@@ -513,6 +513,15 @@
                                             }
                                             // Grid-Editor: editierbar = offen/spread/ist im Bearbeiten-Modus.
                                             $cellEditable = $editMode && in_array($cellState, ['open', 'spread', 'actual'], true);
+                                            // Aufgeschlüsselte Zelle: Wert = Σ Unterzeilen → nicht direkt tippbar (nur übers Modal).
+                                            $cellIsBroken = isset($breakdownCells[$rowKey.'|'.$bkt]);
+                                            if ($cellIsBroken) {
+                                                $cellState = 'breakdown';
+                                                $cellEditable = false;
+                                            }
+                                            // Aufschlüsseln anbietbar: Eingabe-Zeile, Bearbeiten aktiv, Plan-Kanal, Zelle offen/grob
+                                            // ODER bereits aufgeschlüsselt. (Im Ist-Kanal nicht angeboten.)
+                                            $canBreakdown = $editMode && $isInputRow && ! $showActual && ($cellIsBroken || in_array($cellState, ['open', 'spread'], true));
                                             $isFu = $rowInfo[$rowKey]['isFactor'] ?? false;
                                             // „·“ auf gröberer Ebene als die Erfassung: Anteile/Quoten (FAKTOR) UND Ratio-Formeln
                                             // (Dimension ratio, z. B. „Summe Umsatzanteile“). Auf groben Ebenen rollt die Engine ihre
@@ -543,7 +552,11 @@
                                             data-fc-r="{{ $gridRowIdx }}" data-fc-c="{{ $loop->index }}"
                                             data-fc-row="{{ $rowKey }}" data-fc-col="{{ $col['bucket'] }}"
                                             @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif>
-                                            @if($hasDetailMark)
+                                            @if($cellIsBroken)
+                                                <button type="button" wire:click.stop="openBreakdown('{{ $rowKey }}', '{{ $bkt }}')" class="fc-mark absolute top-1 left-1.5 text-[var(--nx-accent)]/80 hover:text-[var(--nx-accent)]" title="Aufgeschlüsselt — Wert = Summe der Unterzeilen. Klicken zum Bearbeiten.">
+                                                    @svg('heroicon-o-list-bullet','w-3 h-3')
+                                                </button>
+                                            @elseif($hasDetailMark)
                                                 <span class="fc-mark absolute top-1 left-1.5 text-[var(--nx-accent)]/70" title="Enthält feineres Detail — Spalte anklicken zum Reinzoomen">
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
                                                 </span>
@@ -567,6 +580,11 @@
                                                 <span class="absolute top-1 right-1.5 text-amber-500" title="Nur teilweise Detail auf dieser Ebene — nicht alle Bestandteile sind hier aufgeschlüsselt, die Kennzahl ist unvollständig">
                                                     @svg('heroicon-o-exclamation-triangle','w-3 h-3')
                                                 </span>
+                                            @endif
+                                            @if($canBreakdown && ! $cellIsBroken)
+                                                <button type="button" wire:click.stop="openBreakdown('{{ $rowKey }}', '{{ $bkt }}')" class="absolute bottom-1 left-1.5 text-[var(--nx-muted)]/0 group-hover/row:text-[var(--nx-muted)]/45 hover:!text-[var(--nx-accent)] transition-colors" title="In Unterzeilen aufschlüsseln (Nachvollziehbarkeit; geht nicht in die DATEV)">
+                                                    @svg('heroicon-o-list-bullet','w-3 h-3')
+                                                </button>
                                             @endif
                                             @if($colCoarse)
                                                 {{-- Anteil/Quote/Ratio (flow) auf gröberer Ebene: aufsummierter %-Wert wäre irreführend → „·“. --}}
@@ -1214,4 +1232,63 @@
         }
     </script>
     @endscript
+
+    {{-- ═══ Aufschlüsseln-Fenster ═══ Eine Zelle in benannte Unterzeilen zerlegen; der Zellwert
+         ist deren Summe (read-only). Nur zur Nachvollziehbarkeit — in die DATEV geht die Oberkategorie. --}}
+    @if($breakdownOpen)
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" wire:key="breakdown-modal">
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-[1px]" wire:click="closeBreakdown"></div>
+            <div class="relative w-full max-w-lg max-h-[85vh] overflow-auto rounded-2xl bg-[var(--nx-surface)] border border-[var(--nx-line)] shadow-2xl shadow-black/20 p-5"
+                 @keydown.escape.window="$wire.closeBreakdown()">
+                <div class="flex items-start justify-between gap-3 mb-1">
+                    <div>
+                        <div class="text-[15px] font-semibold tracking-tight text-[var(--nx-text)]">Aufschlüsseln · {{ $breakdownRowLabel }}</div>
+                        <div class="text-[11px] text-[var(--nx-muted)]">Zelle {{ $breakdownBucket }} · der Zellwert ist die Summe dieser Unterzeilen</div>
+                    </div>
+                    <button type="button" wire:click="closeBreakdown" class="text-[var(--nx-muted)] hover:text-[var(--nx-text)] transition-colors" title="Schließen">
+                        @svg('heroicon-o-x-mark','w-5 h-5')
+                    </button>
+                </div>
+
+                <p class="text-[11px] text-[var(--nx-muted)]/80 mb-3 leading-relaxed">
+                    Nur zur Nachvollziehbarkeit („woraus setzt sich die Zahl zusammen"). In die DATEV geht ausschließlich die Oberkategorie, nicht die Unterzeilen. Eine Entlastung/Gutschrift in einer Kostenzeile trägst du mit Minus ein.
+                </p>
+
+                @if($cellError)
+                    <div class="mb-3 text-[12px] text-rose-600 bg-rose-500/10 rounded-lg px-3 py-2">{{ $cellError }}</div>
+                @endif
+
+                <div class="flex flex-col gap-2">
+                    @foreach($breakdownItems as $i => $bi)
+                        <div class="flex items-center gap-2" wire:key="bd-item-{{ $i }}">
+                            <input type="text" wire:model="breakdownItems.{{ $i }}.label" placeholder="Bezeichnung (z. B. Bange Profi)"
+                                   class="flex-1 min-w-0 px-2.5 py-1.5 text-[13px] rounded-lg bg-[var(--nx-hover)]/50 border border-[var(--nx-line)] focus:border-[var(--nx-accent)] focus:outline-none text-[var(--nx-text)] placeholder:text-[var(--nx-muted)]/50">
+                            <input type="text" inputmode="decimal" wire:model.live.debounce.400ms="breakdownItems.{{ $i }}.value" placeholder="0"
+                                   class="w-28 px-2.5 py-1.5 text-[13px] text-right tabular-nums rounded-lg bg-[var(--nx-hover)]/50 border border-[var(--nx-line)] focus:border-[var(--nx-accent)] focus:outline-none text-[var(--nx-text)] placeholder:text-[var(--nx-muted)]/50">
+                            <button type="button" wire:click="removeBreakdownItem({{ $i }})" class="shrink-0 text-[var(--nx-muted)]/60 hover:text-rose-600 transition-colors" title="Unterzeile entfernen">
+                                @svg('heroicon-o-trash','w-4 h-4')
+                            </button>
+                        </div>
+                    @endforeach
+                </div>
+
+                <button type="button" wire:click="addBreakdownItem" class="mt-2 inline-flex items-center gap-1 text-[12px] text-[var(--nx-accent)] hover:underline">
+                    @svg('heroicon-o-plus','w-3.5 h-3.5') Unterzeile hinzufügen
+                </button>
+
+                @php $bdSum = $this->breakdownSum(); @endphp
+                <div class="mt-4 pt-3 border-t border-[var(--nx-line)]/60 flex items-center justify-between">
+                    <span class="text-[12px] text-[var(--nx-muted)]">Summe = Zellwert</span>
+                    <span class="text-[15px] font-semibold tabular-nums {{ $bdSum < 0 ? 'text-emerald-600' : 'text-[var(--nx-text)]' }}">
+                        {{ $bdSum < 0 ? '−' : '' }}{{ rtrim(rtrim(number_format(abs($bdSum), 2, ',', '.'), '0'), ',') }}{{ $breakdownIsFactor ? ' %' : '' }}
+                    </span>
+                </div>
+
+                <div class="mt-4 flex items-center justify-end gap-2">
+                    <button type="button" wire:click="closeBreakdown" class="px-3 py-1.5 text-[13px] rounded-lg text-[var(--nx-muted)] hover:bg-[var(--nx-hover)] transition-colors">Abbrechen</button>
+                    <button type="button" wire:click="saveBreakdown" wire:loading.attr="disabled" class="px-3.5 py-1.5 text-[13px] font-medium rounded-lg bg-[var(--nx-accent)] text-white hover:opacity-90 transition-opacity">Speichern</button>
+                </div>
+            </div>
+        </div>
+    @endif
 </x-ui-page>

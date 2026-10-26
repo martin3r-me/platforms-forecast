@@ -3,6 +3,7 @@
 namespace Platform\Forecast\Services;
 
 use Platform\Forecast\Enums\RowKind;
+use Platform\Forecast\Models\ForecastEntryDetail;
 use Platform\Forecast\Models\ForecastPlan;
 
 /**
@@ -43,6 +44,14 @@ final class CellEditability
         // Ordner → abgeleitet (Werte kommen aus den untergeordneten Planungen hoch)
         if (ForecastPlan::where('parent_plan_id', $plan->id)->exists()) {
             return ['editable' => false, 'state' => 'derived', 'reason' => 'Ordner — Werte kommen aus den untergeordneten Planungen.'];
+        }
+
+        // Aufgeschlüsselte Zelle: Wert = Σ Unterzeilen → nicht direkt tippbar/löschbar. Das
+        // Aufschlüsseln-Fenster selbst bleibt erreichbar (editable=false sperrt nur das direkte
+        // Schreiben auf diese Zelle, siehe PlanService::setBreakdown mit state-Ausnahme).
+        if (ForecastEntryDetail::where('plan_id', $plan->id)
+            ->where('row_key', $rowKey)->where('bucket_key', $bucketKey)->where('channel', $channel)->exists()) {
+            return ['editable' => false, 'state' => 'breakdown', 'reason' => 'Zelle ist aufgeschlüsselt — über das Aufschlüsseln-Fenster ändern.'];
         }
 
         // Ist-Kanal: Ist-Werte gibt es gerade in GESCHLOSSENEN Perioden — die Plan-Sperre gilt hier

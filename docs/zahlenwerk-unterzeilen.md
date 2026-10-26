@@ -117,6 +117,30 @@ Summe = grün (Entlastung); Jahr→Quartal→Monat-Verteilung wie bei direktem J
 „Auszahlungen gesamt"-Rollup unverändert; leere Liste hebt Aufschlüsselung auf → Zelle wieder
 Direktwert. z-index-Fix bestätigt (Modal liegt über Tabellenkopf). Kein JS-Fehler.
 
+## 5c. UX-Nachschliff (2026-10-26, nach Live-Test)
+
+Feedback Martin nach dem ersten Live-Durchlauf: (a) der Mini-Hover-Icon zum Aufschlüsseln war
+**zu klein/schwer zu treffen**, mehr Icons sind aber nicht die Lösung; (b) die **Verteilung nach
+unten** war nicht sauber — feinere Ebenen sahen tippbar aus.
+
+- **Auslöser = Rechtsklick-Menü** (Excel-artig) statt Hover-Icon. Rechtsklick auf eine Eingabe-
+  zelle → „In Unterzeilen aufschlüsseln …"; auf einer aufgeschlüsselten Zelle → „Aufschlüsselung
+  bearbeiten …" + „Auflösen → Direktwert"; auf einer direkt tippbaren Zelle zusätzlich „Zelle
+  leeren". **Doppelklick/Enter** auf einer aufgeschlüsselten (read-only) Zelle öffnet ebenfalls
+  das Fenster. Der kleine Marker oben links ist nur noch **Statusanzeige**, kein Zielobjekt. Das
+  Hover-Icon ist entfernt; Toolbar-Hinweis „Rechtsklick schlüsselt auf". Neu: Livewire-Methode
+  `PlanView::dissolveBreakdown` (leere Liste → Direktwert), td-Flags `data-fc-broken/-canbreak/
+  -derived`, Menü + CSS (`.fc-ctx*`) im Blade, `mousedown` nur noch linke Taste.
+- **Verteilung = aufgeschlüsselte Ebene ist die einzige Wahrheit.** Jede sichtbare Zelle, deren
+  Bucket **unterhalb** eines aufgeschlüsselten Buckets derselben Zeile liegt, ist **read-only**
+  („aus Aufschlüsselung verteilt", dezenter Marker + Tooltip, kein verwirrender „Rest"-Balken).
+  So kann die Invariante Zelle=ΣUnterzeilen nicht durch Tippen auf einer feineren Ebene umgangen
+  werden. Ermittelt in `PlanView::render` über `isDescendant()` (Zeitachse, korrekt auch für
+  Quartal/Halbjahr) → neues View-Set `breakdownDerivedCells`; Blade-Zustand `breakdown-derived`.
+
+**Offen bis Live (2. Deploy):** Rechtsklick-Menü klick-testen (aufschlüsseln/bearbeiten/auflösen/
+leeren), Doppelklick auf aufgeschlüsselte Zelle, feinere Ebenen read-only + Marker, kein „Rest".
+
 ## 6. Empfehlung zum Vorgehen
 - **Nicht** im v1-Rollout (erster Planer-Durchlauf Rainer) — kein Mehrwert für den ersten Tipp-Durchgang, vergrößert die Fehlerfläche.
 - Kandidat für die **Rolling-Forecast-Runde**, weil „woraus setzt sich die Zahl zusammen" dort ohnehin aus den HGK-Rechnungen (Rechnungs-/Veranstaltungsebene) kommt — teils als Ist-Frage, nicht nur Hand-Pflege.

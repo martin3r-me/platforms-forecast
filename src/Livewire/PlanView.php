@@ -307,6 +307,28 @@ class PlanView extends Component
         }
     }
 
+    /**
+     * Aufschlüsselung einer Zelle auflösen: leere Unterzeilen-Liste setzen → der zuletzt
+     * berechnete Summenwert bleibt als frei tippbarer Direktwert erhalten (siehe
+     * PlanService::setBreakdown, „unless list empty"). Für das Rechtsklick-Menü.
+     */
+    public function dissolveBreakdown(string $rowKey, string $bucket): void
+    {
+        $this->cellError = null;
+        $this->editNonce++;
+        $plan = $this->plan();
+
+        try {
+            (new PlanService())->setBreakdown($plan, $rowKey, $bucket, [], Auth::id(), enforceGate: true, channel: $this->channel());
+            $meta = $this->rowMeta($plan, $rowKey);
+            $this->lastEdit = ['cells' => [['row' => $rowKey, 'bucket' => $bucket]], 'count' => 1, 'label' => $meta['label'], 'action' => 'aufgelöst'];
+        } catch (\InvalidArgumentException|\DomainException $e) {
+            $this->cellError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->cellError = 'Konnte die Aufschlüsselung nicht auflösen.';
+        }
+    }
+
     /** Betrag für die Modal-Eingabe formatieren (Faktor in %-Ebene, DE-Dezimalkomma). */
     private function breakdownFmt(float $store, bool $isFactor): string
     {
@@ -1099,8 +1121,34 @@ class PlanView extends Component
             $breakdownCells = [];
         }
 
+        // Von einer Aufschlüsselung GOVERNTE feinere Zellen: Die aufgeschlüsselte Ebene ist die
+        // einzige Wahrheit — jede sichtbare Zelle, deren Bucket UNTERHALB eines aufgeschlüsselten
+        // Buckets derselben Zeile liegt, ist nur „verteilt" → read-only (nicht direkt tippbar,
+        // sonst würde die Invariante Zelle=ΣUnterzeilen umgangen). isDescendant() nutzt die
+        // Zeitachse und ist damit auch für Quartal/Halbjahr korrekt (nicht nur String-Präfix).
+        $breakdownDerivedCells = [];
+        if ($breakdownCells !== []) {
+            $brokenByRow = [];
+            foreach (array_keys($breakdownCells) as $bc) {
+                [$rk, $bk] = explode('|', $bc, 2);
+                $brokenByRow[$rk][] = $bk;
+            }
+            foreach ($brokenByRow as $rk => $bks) {
+                foreach ($columns as $col) {
+                    $cb = $col['bucket'];
+                    foreach ($bks as $bb) {
+                        if ($cb !== $bb && $this->isDescendant($cb, $bb)) {
+                            $breakdownDerivedCells[$rk.'|'.$cb] = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         return view('forecast::livewire.plan-view', [
             'breakdownCells' => $breakdownCells,
+            'breakdownDerivedCells' => $breakdownDerivedCells,
             'parentPlan' => $parentPlan,
             'childPlans' => $childPlans,
             'fromPlan' => $fromPlan,

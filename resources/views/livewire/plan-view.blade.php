@@ -327,7 +327,7 @@
                     @if($editMode)
                         <div class="px-4 pb-2.5 flex items-center gap-2 text-[11px]">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--nx-accent)]/10 text-[var(--nx-accent)] font-medium">@svg('heroicon-o-pencil-square','w-3 h-3') Bearbeiten aktiv</span>
-                            <span class="text-[var(--nx-muted)]"><span class="font-medium">Klick</span> wählt · <span class="font-medium">Ziehen/⇧</span> Bereich · <span class="font-medium">Tippen/Enter/Doppelklick</span> ändert · <span class="font-medium">Entf</span> leert · <span class="font-medium">Pfeile</span> bewegen · <span class="font-medium">⌘/Strg+C/V</span> kopiert/fügt ein · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet.</span>
+                            <span class="text-[var(--nx-muted)]"><span class="font-medium">Klick</span> wählt · <span class="font-medium">Ziehen/⇧</span> Bereich · <span class="font-medium">Tippen/Enter/Doppelklick</span> ändert · <span class="font-medium">Entf</span> leert · <span class="font-medium">Pfeile</span> bewegen · <span class="font-medium">⌘/Strg+C/V</span> kopiert/fügt ein · <span class="font-medium">100</span> setzt, <span class="font-medium">+50 · +5% · *1,1 · /2</span> rechnet · <span class="font-medium">Rechtsklick</span> schlüsselt auf.</span>
 
                             {{-- Auto-Forecast: die (zukünftige) Auswahl aus der Ist-Historie fortschreiben --}}
                             <span class="inline-flex items-center gap-1 pl-1 border-l border-[var(--nx-line)]/50">
@@ -519,6 +519,13 @@
                                                 $cellState = 'breakdown';
                                                 $cellEditable = false;
                                             }
+                                            // Feinere Zelle UNTER einer aufgeschlüsselten Ebene: nur verteilt, nicht tippbar.
+                                            // Die aufgeschlüsselte Ebene ist die einzige Wahrheit (dort bearbeiten).
+                                            $cellFromBreakdown = ! $cellIsBroken && isset($breakdownDerivedCells[$rowKey.'|'.$bkt]);
+                                            if ($cellFromBreakdown) {
+                                                $cellState = 'breakdown-derived';
+                                                $cellEditable = false;
+                                            }
                                             // Aufschlüsseln anbietbar: Eingabe-Zeile, Bearbeiten aktiv, Plan-Kanal, Zelle offen/grob
                                             // ODER bereits aufgeschlüsselt. (Im Ist-Kanal nicht angeboten.)
                                             $canBreakdown = $editMode && $isInputRow && ! $showActual && ($cellIsBroken || in_array($cellState, ['open', 'spread'], true));
@@ -551,11 +558,15 @@
                                                     : 'group-hover/row:bg-[var(--nx-hover)]/60'))) }}"
                                             data-fc-r="{{ $gridRowIdx }}" data-fc-c="{{ $loop->index }}"
                                             data-fc-row="{{ $rowKey }}" data-fc-col="{{ $col['bucket'] }}"
-                                            @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif>
+                                            @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif@if($cellIsBroken) data-fc-broken="1"@endif@if($canBreakdown && ! $cellIsBroken) data-fc-canbreak="1"@endif@if($cellFromBreakdown) data-fc-derived="1"@endif>
                                             @if($cellIsBroken)
                                                 <button type="button" wire:click.stop="openBreakdown('{{ $rowKey }}', '{{ $bkt }}')" class="fc-mark absolute top-1 left-1.5 text-[var(--nx-accent)]/80 hover:text-[var(--nx-accent)]" title="Aufgeschlüsselt — Wert = Summe der Unterzeilen. Klicken zum Bearbeiten.">
                                                     @svg('heroicon-o-list-bullet','w-3 h-3')
                                                 </button>
+                                            @elseif($cellFromBreakdown)
+                                                <span class="fc-mark absolute top-1 left-1.5 text-[var(--nx-accent)]/35" title="Aus der Aufschlüsselung der übergeordneten Zelle verteilt — eine Ebene höher bearbeiten (hier read-only).">
+                                                    @svg('heroicon-o-list-bullet','w-3 h-3')
+                                                </span>
                                             @elseif($hasDetailMark)
                                                 <span class="fc-mark absolute top-1 left-1.5 text-[var(--nx-accent)]/70" title="Enthält feineres Detail — Spalte anklicken zum Reinzoomen">
                                                     @svg('heroicon-o-bars-arrow-down','w-3 h-3')
@@ -581,12 +592,16 @@
                                                     @svg('heroicon-o-exclamation-triangle','w-3 h-3')
                                                 </span>
                                             @endif
-                                            @if($canBreakdown && ! $cellIsBroken)
-                                                <button type="button" wire:click.stop="openBreakdown('{{ $rowKey }}', '{{ $bkt }}')" class="absolute bottom-1 left-1.5 text-[var(--nx-muted)]/0 group-hover/row:text-[var(--nx-muted)]/45 hover:!text-[var(--nx-accent)] transition-colors" title="In Unterzeilen aufschlüsseln (Nachvollziehbarkeit; geht nicht in die DATEV)">
-                                                    @svg('heroicon-o-list-bullet','w-3 h-3')
-                                                </button>
-                                            @endif
-                                            @if($colCoarse)
+                                            {{-- Aufschlüsseln wird per Rechtsklick-Menü/Doppelklick ausgelöst (kein Hover-Icon mehr). --}}
+                                            @if($cellFromBreakdown)
+                                                {{-- Von der Aufschlüsselung verteilter Wert — read-only, dezent, ohne „Rest“-Balken. --}}
+                                                @php $dv = $cellObj['value'] ?? 0; @endphp
+                                                @if($dv != 0)
+                                                    <span class="tabular-nums {{ $toneOf($rowKey, $dv) }} opacity-60" title="Aus der Aufschlüsselung der übergeordneten Zelle verteilt — eine Ebene höher bearbeiten.">{{ $signOf($rowKey, $dv) }}{{ $fmtRow($rowKey, $dv) }}<span class="text-[10px] font-normal text-[var(--nx-muted)] ml-0.5">{{ $unitOf($rowKey) }}</span></span>
+                                                @else
+                                                    <span class="text-[var(--nx-muted)]/40" title="Aus der Aufschlüsselung verteilt">·</span>
+                                                @endif
+                                            @elseif($colCoarse)
                                                 {{-- Anteil/Quote/Ratio (flow) auf gröberer Ebene: aufsummierter %-Wert wäre irreführend → „·“. --}}
                                                 <span class="text-[var(--nx-muted)]/40" title="Anteil/Quote ist nur auf der Erfassungs-Ebene (z. B. Monat) aussagekräftig — gröber summiert sich der Prozentwert auf.">·</span>
                                             @elseif($showActual)
@@ -888,6 +903,18 @@
             color: var(--nx-accent); border-bottom-color: color-mix(in srgb, var(--nx-accent) 70%, transparent); }
         @media (prefers-reduced-motion: reduce) { .fc-fill { transition: none; } }
 
+        /* Rechtsklick-Zellmenü (Aufschlüsseln & Co.) — schwebend an <body>, Theme-Tokens. */
+        .fc-ctx { position: fixed; z-index: 70; min-width: 210px; padding: 4px;
+            background: var(--nx-surface); border: 1px solid var(--nx-line);
+            border-radius: 12px; box-shadow: 0 12px 28px -8px rgb(0 0 0 / .28); }
+        .fc-ctx-item { display: block; width: 100%; text-align: left; padding: 6px 10px;
+            font-size: 13px; line-height: 1.2; color: var(--nx-text); background: transparent;
+            border: 0; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+        .fc-ctx-item:hover { background: var(--nx-accent-soft); }
+        .fc-ctx-danger:hover { background: rgb(244 63 94 / .12); color: rgb(225 29 72); }
+        .fc-ctx-sep { height: 1px; margin: 4px 6px; background: var(--nx-line); }
+        .fc-ctx-info { padding: 6px 10px; font-size: 12px; color: var(--nx-muted); white-space: nowrap; }
+
         /* Ergebniszeilen (DB I–IV, EBITDA, …) als zartes Akzent-Band absetzen:
            feine Linie oben + der bestehende Accent-Soft-Grund = klar lesbare Summe. */
         tr.fc-result > td { border-top: 1px solid color-mix(in srgb, var(--nx-accent) 22%, transparent); }
@@ -1157,6 +1184,7 @@
 
             // Maus: klicken wählt · Shift erweitert · ziehen spannt Bereich auf · Doppelklick editiert.
             document.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return; // nur linke Taste wählt/zieht — Rechtsklick → Kontextmenü
                 if (e.target === G.editor) return;
                 if (e.target === G.handle) { e.preventDefault(); e.stopPropagation(); G.startFillDrag(); return; } // Fill-Handle
                 if (e.target.closest && e.target.closest('a, button')) return; // Drill-Links/Buttons durchlassen
@@ -1180,7 +1208,68 @@
             }, true);
             document.addEventListener('dblclick', (e) => {
                 const td = e.target.closest && e.target.closest('td[data-fc-r]');
-                if (td) { G.select(+td.dataset.fcR, +td.dataset.fcC, false); G.startEdit(null); }
+                if (! td) return;
+                G.select(+td.dataset.fcR, +td.dataset.fcC, false);
+                // Aufgeschlüsselte Zelle ist read-only → Doppelklick öffnet das Aufschlüsseln-Fenster
+                // (statt in den Editor zu gehen). Winziges Marker-Icon ist dann nur noch Statusanzeige.
+                if (td.dataset.fcBroken === '1') { if (window.__fcWire) window.__fcWire.openBreakdown(td.dataset.fcRow, td.dataset.fcCol); return; }
+                G.startEdit(null);
+            }, true);
+
+            // ── Rechtsklick-Menü (Excel-artig) ── Zell-Aktionen ohne Dauer-Icons: Aufschlüsseln,
+            // Aufschlüsselung bearbeiten/auflösen, Leeren. Das Menü lebt an <body>, schließt bei
+            // Klick/Scroll/Escape.
+            const fcMenu = (() => {
+                let el = null;
+                const close = () => { if (el) { el.remove(); el = null; document.removeEventListener('mousedown', onDoc, true); document.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); window.removeEventListener('blur', close); } };
+                const onDoc = (ev) => { if (el && ! el.contains(ev.target)) close(); };
+                const open = (x, y, items) => {
+                    close();
+                    el = document.createElement('div');
+                    el.className = 'fc-ctx';
+                    for (const it of items) {
+                        if (it.sep) { const s = document.createElement('div'); s.className = 'fc-ctx-sep'; el.appendChild(s); continue; }
+                        if (it.info) { const d = document.createElement('div'); d.className = 'fc-ctx-info'; d.textContent = it.label; el.appendChild(d); continue; }
+                        const b = document.createElement('button');
+                        b.type = 'button'; b.className = 'fc-ctx-item' + (it.danger ? ' fc-ctx-danger' : '');
+                        b.textContent = it.label;
+                        b.addEventListener('click', () => { close(); try { it.fn(); } catch (_) {} });
+                        el.appendChild(b);
+                    }
+                    document.body.appendChild(el);
+                    const r = el.getBoundingClientRect();
+                    el.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
+                    el.style.top = Math.min(y, window.innerHeight - r.height - 8) + 'px';
+                    setTimeout(() => { document.addEventListener('mousedown', onDoc, true); document.addEventListener('scroll', close, true); window.addEventListener('resize', close); window.addEventListener('blur', close); }, 0);
+                };
+                return { open, close };
+            })();
+
+            document.addEventListener('contextmenu', (e) => {
+                const td = e.target.closest && e.target.closest('td[data-fc-r]');
+                if (! td) return;
+                const broken = td.dataset.fcBroken === '1';
+                const canBreak = td.dataset.fcCanbreak === '1';
+                const editable = td.dataset.fcEdit === '1';
+                const derived = td.dataset.fcDerived === '1';
+                if (! broken && ! canBreak && ! editable && ! derived) return; // kein Grid-Kontext → natives Menü
+                e.preventDefault();
+                G.select(+td.dataset.fcR, +td.dataset.fcC, false);
+                const row = td.dataset.fcRow, bkt = td.dataset.fcCol, W = window.__fcWire;
+                if (! W) return;
+                if (derived) { fcMenu.open(e.clientX, e.clientY, [{ info: true, label: 'Aus Aufschlüsselung verteilt — eine Ebene höher bearbeiten' }]); return; }
+                const items = [];
+                if (broken) {
+                    items.push({ label: 'Aufschlüsselung bearbeiten …', fn: () => W.openBreakdown(row, bkt) });
+                    items.push({ label: 'Auflösen → Direktwert', fn: () => W.dissolveBreakdown(row, bkt) });
+                } else if (canBreak) {
+                    items.push({ label: 'In Unterzeilen aufschlüsseln …', fn: () => W.openBreakdown(row, bkt) });
+                }
+                if (editable && ! broken) {
+                    items.push({ sep: true });
+                    items.push({ label: 'Zelle leeren', danger: true, fn: () => W.saveCell(row, bkt, '') });
+                }
+                if (items.length) fcMenu.open(e.clientX, e.clientY, items);
             }, true);
 
             // Tastatur (nur wenn eine Grid-Zelle aktiv ist, nicht editiert wird und kein Feld fokussiert ist).

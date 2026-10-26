@@ -313,7 +313,7 @@
                             @endif
                             <details class="relative [&_summary::-webkit-details-marker]:hidden">
                                 <summary class="inline-flex items-center gap-1 cursor-pointer list-none select-none px-1.5 py-1 rounded-md hover:bg-[var(--nx-accent-soft)] transition-colors" title="Was die Feld-Zustände bedeuten">@svg('heroicon-o-question-mark-circle','w-3.5 h-3.5') Feld-Zustände</summary>
-                                <div class="absolute right-0 top-full mt-1 z-20 flex flex-col gap-1.5 whitespace-nowrap bg-[var(--nx-surface)] border border-[var(--nx-line)] rounded-lg shadow-lg shadow-black/5 p-3">
+                                <div class="absolute right-0 top-full mt-1 z-50 flex flex-col gap-1.5 whitespace-nowrap bg-[var(--nx-surface)] border border-[var(--nx-line)] rounded-lg shadow-lg shadow-black/5 p-3">
                                     <span class="inline-flex items-center gap-1" title="Offen: hier kannst du tippen — Periode ist offen"><span class="w-3 h-3 rounded-sm bg-[var(--nx-accent)]/[0.12] ring-1 ring-inset ring-[var(--nx-accent)]/40"></span> offen · tippbar</span>
                                     <span class="inline-flex items-center gap-1" title="Berechnet: ergibt sich aus anderen Zeilen"><span class="text-[9px] font-bold px-1 rounded bg-[var(--nx-accent-soft)] text-[var(--nx-muted)]">ƒ</span> berechnet</span>
                                     <span class="inline-flex items-center gap-1" title="Abgeleitet: kommt aus den untergeordneten Planungen hoch"><span class="text-[9px] font-bold px-1 rounded bg-indigo-500/10 text-indigo-600">↑</span> abgeleitet</span>

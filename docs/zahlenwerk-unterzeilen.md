@@ -138,8 +138,14 @@ unten** war nicht sauber — feinere Ebenen sahen tippbar aus.
   werden. Ermittelt in `PlanView::render` über `isDescendant()` (Zeitachse, korrekt auch für
   Quartal/Halbjahr) → neues View-Set `breakdownDerivedCells`; Blade-Zustand `breakdown-derived`.
 
-**Offen bis Live (2. Deploy):** Rechtsklick-Menü klick-testen (aufschlüsseln/bearbeiten/auflösen/
-leeren), Doppelklick auf aufgeschlüsselte Zelle, feinere Ebenen read-only + Marker, kein „Rest".
+**Live verifiziert (2026-10-26, 2. Deploy, office.bhgdigital.de):** Rechtsklick-Menü auf offener
+Zelle („Aufschlüsseln …" + „Zelle leeren"), auf aufgeschlüsselter Zelle („Bearbeiten …" +
+„Auflösen → Direktwert"); Jahreszelle aufgeschlüsselt (40.000 + 17.676 = 57.676), nach
+Monat gedrillt → Monate read-only, dezent markiert, **kein** „Rest"; Rechtsklick auf verteilte
+Monatszelle zeigt nur den Hinweis „Aus Aufschlüsselung verteilt — eine Ebene höher bearbeiten";
+„Auflösen" stellt den Direktwert wieder her. Hinweis: der 1. Deploy (990e62f) hatte einen
+Blade-ParseError (verkettete inline-@if im `<td>`) → 500 auf jeder Plan-Seite, behoben in
+13de602 (Flags als `@php`-String).
 
 ## 6. Empfehlung zum Vorgehen
 - **Nicht** im v1-Rollout (erster Planer-Durchlauf Rainer) — kein Mehrwert für den ersten Tipp-Durchgang, vergrößert die Fehlerfläche.

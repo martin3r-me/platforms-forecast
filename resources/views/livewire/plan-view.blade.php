@@ -562,7 +562,7 @@
                                                     : 'group-hover/row:bg-[var(--nx-hover)]/60'))) }}"
                                             data-fc-r="{{ $gridRowIdx }}" data-fc-c="{{ $loop->index }}"
                                             data-fc-row="{{ $rowKey }}" data-fc-col="{{ $col['bucket'] }}"
-                                            @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif{!! $cellFlags !!}>
+                                            @if($cellEditable) data-fc-edit="1" data-fc-raw="{{ $pfRaw }}"@if($unitOf($rowKey)) data-fc-unit="{{ $unitOf($rowKey) }}"@endif @if($cellState === 'spread') data-fc-spread="1"@endif @if($isFu) data-fc-factor="1"@endif @endif{!! $cellFlags !!}>
                                             @if($cellIsBroken)
                                                 <button type="button" wire:click.stop="openBreakdown('{{ $rowKey }}', '{{ $bkt }}')" class="fc-mark absolute top-1 left-1.5 text-[var(--nx-accent)]/80 hover:text-[var(--nx-accent)]" title="Aufgeschlüsselt — Wert = Summe der Unterzeilen. Klicken zum Bearbeiten.">
                                                     @svg('heroicon-o-list-bullet','w-3 h-3')
@@ -863,6 +863,17 @@
             background: var(--nx-surface); color: var(--nx-text);
             border: 2px solid var(--nx-accent); border-radius: 4px; padding: 2px 5px; z-index: 10; outline: none; }
         .fc-editor.fc-editor--spread { border-color: rgb(245 158 11); }
+        /* Einheiten-Hinweis: zeigt an leeren Eingabezellen, welche Einheit erwartet wird (z. B. „– %").
+           Rein per ::after mit attr() — kein zusätzliches DOM pro Zelle, nur auf leeren (data-fc-raw="")
+           editierbaren Zellen. Beim Tippen deckt der opake Editor (z-10) den Hinweis ab. */
+        td[data-fc-edit="1"][data-fc-raw=""][data-fc-unit]::after {
+            content: attr(data-fc-unit); margin-left: 2px;
+            font-size: 10px; font-weight: 400;
+            color: color-mix(in srgb, var(--nx-muted) 55%, transparent); }
+        /* Einheiten-Suffix rechts im aktiven Editor, über dem Eingabefeld (z-11), klick-durchlässig. */
+        .fc-editor-unit { position: absolute; top: 3px; bottom: 3px; right: 7px; z-index: 11;
+            display: flex; align-items: center; pointer-events: none;
+            font-size: .8rem; color: var(--nx-muted); }
         .fc-fill-handle { position: absolute; bottom: -4px; right: -4px; width: 9px; height: 9px; border-radius: 1px;
             background: var(--nx-accent); border: 1.5px solid var(--nx-surface); cursor: crosshair; z-index: 3; }
         td.fc-fill-preview { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nx-accent) 55%, transparent);
@@ -1018,6 +1029,15 @@
                     document.body.appendChild(ed); ed.style.display = 'none';
                     this.editor = ed; return ed;
                 },
+                // Einheiten-Suffix (z. B. „%"), das rechts im aktiven Editor angezeigt wird, damit beim
+                // Tippen klar ist, welche Einheit erwartet wird. Ein einziges, wiederverwendetes Element.
+                ensureEditorUnit() {
+                    if (this.editorUnit) return this.editorUnit;
+                    const s = document.createElement('span');
+                    s.className = 'fc-editor-unit';
+                    document.body.appendChild(s); s.style.display = 'none';
+                    this.editorUnit = s; return s;
+                },
                 startEdit(initial) {
                     if (! this.active) return;
                     const td = this.cell(this.active.r, this.active.c);
@@ -1027,10 +1047,16 @@
                     ed.dataset.row = td.dataset.fcRow; ed.dataset.col = td.dataset.fcCol;
                     ed.classList.toggle('fc-editor--spread', td.dataset.fcSpread === '1');
                     ed.style.display = ''; td.appendChild(ed);
+                    // Einheiten-Suffix im Editor (z. B. „%"), falls die Zeile eine Einheit hat.
+                    const unit = td.dataset.fcUnit || '';
+                    const us = this.ensureEditorUnit();
+                    if (unit) { us.textContent = unit; us.style.display = ''; td.appendChild(us);
+                        ed.style.paddingRight = (10 + unit.length * 8) + 'px'; }
+                    else { us.style.display = 'none'; ed.style.paddingRight = ''; }
                     ed.value = (initial != null) ? initial : (td.dataset.fcRaw || '');
                     ed.focus(); if (initial == null) ed.select();
                 },
-                stashEditor() { if (this.editor) { this.editor.style.display = 'none'; document.body.appendChild(this.editor); } },
+                stashEditor() { if (this.editor) { this.editor.style.display = 'none'; this.editor.style.paddingRight = ''; document.body.appendChild(this.editor); } if (this.editorUnit) { this.editorUnit.style.display = 'none'; document.body.appendChild(this.editorUnit); } },
                 commitEdit() {
                     if (! this.editing) return;
                     this.editing = false;

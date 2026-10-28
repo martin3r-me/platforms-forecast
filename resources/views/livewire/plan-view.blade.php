@@ -676,7 +676,7 @@
                                                     @if($sp > 0)
                                                         <span class="tabular-nums italic text-[11px] text-[var(--nx-muted)]/55" title="verteilter Rest (nicht verbindlich)">≈&hairsp;{{ $signOf($rowKey, $sp) }}{{ $fmtRow($rowKey, $sp) }}</span>
                                                     @elseif($cellEditable)
-                                                        <span class="fc-fill" title="Noch nicht geplant — hier eintragen">–</span>
+                                                        <span class="fc-fill" title="Noch nicht geplant — hier eintragen">–</span>@if($unitOf($rowKey))<span class="fc-unit-hint">{{ $unitOf($rowKey) }}</span>@endif
                                                     @else
                                                         <span class="text-[var(--nx-muted)]/40">·</span>
                                                     @endif
@@ -863,12 +863,10 @@
             background: var(--nx-surface); color: var(--nx-text);
             border: 2px solid var(--nx-accent); border-radius: 4px; padding: 2px 5px; z-index: 10; outline: none; }
         .fc-editor.fc-editor--spread { border-color: rgb(245 158 11); }
-        /* Einheiten-Hinweis: zeigt an leeren Eingabezellen, welche Einheit erwartet wird (z. B. „– %").
-           Rein per ::after mit attr() — kein zusätzliches DOM pro Zelle, nur auf leeren (data-fc-raw="")
-           editierbaren Zellen. Beim Tippen deckt der opake Editor (z-10) den Hinweis ab. */
-        td[data-fc-edit="1"][data-fc-raw=""][data-fc-unit]::after {
-            content: attr(data-fc-unit); margin-left: 2px;
-            font-size: 10px; font-weight: 400;
+        /* Einheiten-Hinweis an WIRKLICH leeren Eingabezellen (die das „–"-Feld zeigen) — signalisiert,
+           welche Einheit erwartet wird (z. B. „– %"). Bewusst NICHT über data-fc-raw="" gesteuert:
+           hochgerollte/verteilte Zellen haben auch raw="" zeigen aber einen Wert → kein Doppel-Hinweis. */
+        .fc-unit-hint { margin-left: 2px; font-size: 10px; font-weight: 400;
             color: color-mix(in srgb, var(--nx-muted) 55%, transparent); }
         /* Einheiten-Suffix rechts im aktiven Editor, über dem Eingabefeld (z-11), klick-durchlässig. */
         .fc-editor-unit { position: absolute; top: 3px; bottom: 3px; right: 7px; z-index: 11;

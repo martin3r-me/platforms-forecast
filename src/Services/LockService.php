@@ -72,7 +72,7 @@ final class LockService
                 $s = Carbon::create((int) $y, ((int) $q - 1) * 3 + 1, 1)->startOfMonth();
                 return [$s, $s->copy()->addMonths(2)->endOfMonth()];
             })(),
-            TimeLevel::Month => [Carbon::createFromFormat('Y-m', $bucket)->startOfMonth(), Carbon::createFromFormat('Y-m', $bucket)->endOfMonth()],
+            TimeLevel::Month => [Carbon::createFromFormat('!Y-m', $bucket)->startOfMonth(), Carbon::createFromFormat('!Y-m', $bucket)->endOfMonth()],
             TimeLevel::Day => [Carbon::createFromFormat('Y-m-d', $bucket)->startOfDay(), Carbon::createFromFormat('Y-m-d', $bucket)->endOfDay()],
             TimeLevel::Hour => (function () use ($bucket) {
                 $day = substr($bucket, 0, (int) strpos($bucket, 'T'));

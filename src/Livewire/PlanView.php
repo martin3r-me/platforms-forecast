@@ -1516,7 +1516,7 @@ class PlanView extends Component
             TimeLevel::Year => $bucket,
             TimeLevel::HalfYear => str_replace('-', ' ', $bucket),
             TimeLevel::Quarter => str_replace('-', ' ', $bucket), // "2026-Q3" → "2026 Q3"
-            TimeLevel::Month => Carbon::createFromFormat('Y-m', $bucket)->translatedFormat('M Y'),
+            TimeLevel::Month => Carbon::createFromFormat('!Y-m', $bucket)->translatedFormat('M Y'),
             TimeLevel::Day => Carbon::createFromFormat('Y-m-d', $bucket)->translatedFormat('D d.'),
             TimeLevel::Hour => substr($bucket, strpos($bucket, 'T') + 1).':00',
         };

@@ -108,6 +108,7 @@ class ForecastServiceProvider extends ServiceProvider
             PlatformCore::registerModule([
                 'key'        => 'forecast', // Eindeutiger Schlüssel
                 'title'      => 'Zahlenwerk', // Anzeige-Name (Modul-Key bleibt forecast)
+                'group'      => 'finance',
                 'routing'    => config('forecast.routing'),
                 'guard'      => config('forecast.guard'),
                 'navigation' => config('forecast.navigation'),

@@ -224,6 +224,32 @@ final class PlanReconciler
         // (Formel-Zeilen werden danach auf den konsolidierten Eingaben neu gerechnet).
         $children = ForecastPlan::where('parent_plan_id', $plan->id)->get();
         $hasChildren = $children->isNotEmpty();
+
+        // Erlaubte Jahre des konsumierenden Plans — ein Cross-Plan-Verweis darf keine fremden Jahre
+        // einziehen (ein 2027er Plan zeigt nicht die 2026-Werte der Quelle). null = keine Begrenzung.
+        $periodYears = null;
+        if ($plan->period_start && $plan->period_end) {
+            $periodYears = [];
+            for ($y = (int) $plan->period_start->format('Y'); $y <= (int) $plan->period_end->format('Y'); $y++) {
+                $periodYears[$y] = true;
+            }
+        }
+
+        // Cross-Plan-Verweis-Zeilen konsolidieren wie Eingaben: Summe der Kinder, statt sie am Ordner
+        // aus den (leeren) eigenen Quellen neu zu rechnen. Der Verweis kann als Instanz-Override NUR
+        // im Kind liegen — die Ordner-(Typ-)Zeile hat dann keine Quellen → Kinder mitprüfen.
+        $childRefRows = [];
+        if ($hasChildren) {
+            foreach ($children as $child) {
+                $peek = $this->compute($child, $visiting); // memoisiert → kein Doppel-Aufwand unten
+                foreach (($peek['rowInfo'] ?? []) as $ck => $ci) {
+                    if (! empty($ci['refPlans'])) {
+                        $childRefRows[$ck] = true;
+                    }
+                }
+            }
+        }
+
         $wavgAcc = []; // rowKey => bucket => ['num' => Σ Wert×Gewicht, 'den' => Σ Gewicht]
         foreach ($children as $child) {
             $cv = $this->compute($child, $visiting);
@@ -232,7 +258,8 @@ final class PlanReconciler
                 // Formel-Zeilen werden normal neu gerechnet — AUSSER sie sind nicht neu-rechenbar
                 // (hängen an einem Faktor): die werden hier wie Eingaben aus den Kindern summiert.
                 $info = $rowInfo[$row->key];
-                if (($info['nonAdditive'] ?? false) || ($info['isFormula'] && ! ($nonRecomputable[$row->key] ?? false))) {
+                $sumFromChildren = ($nonRecomputable[$row->key] ?? false) || ($childRefRows[$row->key] ?? false);
+                if (($info['nonAdditive'] ?? false) || ($info['isFormula'] && ! $sumFromChildren)) {
                     continue;
                 }
 
@@ -307,8 +334,9 @@ final class PlanReconciler
         $formulaOrder = $this->orderFormulas($rowInfo, array_fill_keys(array_keys($rowInfo), true));
         foreach ($formulaOrder as $rk) {
             $row = $rowByKey[$rk];
-            // Am Ordner: nicht neu-rechenbare Formeln sind schon per Kind-Summe konsolidiert.
-            if ($hasChildren && ($nonRecomputable[$row->key] ?? false)) {
+            // Am Ordner: nicht neu-rechenbare Formeln UND Cross-Plan-Verweise sind schon per
+            // Kind-Summe konsolidiert.
+            if ($hasChildren && (($nonRecomputable[$row->key] ?? false) || ($childRefRows[$row->key] ?? false))) {
                 continue;
             }
 
@@ -328,6 +356,10 @@ final class PlanReconciler
                 } else {
                     $rv = $refViews[$src->source_plan_id] ?? null;
                     $cells = $rv['rows'][$src->source_row_key]['cells'] ?? [];
+                    // Fremde Jahre der Quelle nicht einziehen — auf den Zeitraum des Zielplans beschneiden.
+                    if ($periodYears !== null) {
+                        $cells = array_filter($cells, fn ($c, $b) => isset($periodYears[(int) substr((string) $b, 0, 4)]), ARRAY_FILTER_USE_BOTH);
+                    }
                     $sdir = $rv['rowInfo'][$src->source_row_key]['direction'] ?? 'neutral';
                 }
                 $sources[] = ['cells' => $cells, 'dir' => $sdir, 'weight' => (float) $src->weight];
@@ -433,7 +465,13 @@ final class PlanReconciler
                 $totals[$k] = $pick ? round(end($pick)['value'], 4) : 0.0;
                 continue;
             }
-            if ($hasChildren && ($nonRecomputable[$k] ?? false)) {
+            if ($hasChildren && (($nonRecomputable[$k] ?? false) || ($childRefRows[$k] ?? false))) {
+                $totals[$k] = $sumYearCells($k);
+                continue;
+            }
+            // Cross-Plan-Verweis (Blatt): Jahrestotal aus den EIGENEN, bereits auf den Zeitraum
+            // beschnittenen Jahres-Zellen — nicht aus den Quell-Totals (die fremde Jahre enthielten).
+            if (! empty($rowInfo[$k]['refPlans'])) {
                 $totals[$k] = $sumYearCells($k);
                 continue;
             }

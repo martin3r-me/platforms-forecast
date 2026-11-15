@@ -426,6 +426,86 @@ final class PlanService
         return $row;
     }
 
+    /**
+     * Legt EINE neue Zeile in einem Typ (Vorlage) an. Wirkt auf alle Instanzen des Typs
+     * (sie lösen Typ-Zeilen mit auf). Reihenfolge: order oder ans Ende. Formel-Zeilen können
+     * config {agg, sources}|{expr} und Quell-Verweise mitbringen (gleiche Form wie createType).
+     */
+    public function addTypeRow(ForecastPlanType $type, array $rowDef): ForecastRow
+    {
+        return DB::transaction(function () use ($type, $rowDef) {
+            $order = array_key_exists('order', $rowDef) && $rowDef['order'] !== null
+                ? (int) $rowDef['order']
+                : ((int) $type->rows()->max('order') + 1);
+            $rowDef['order'] = $order;
+
+            $row = ForecastRow::create(
+                $this->rowAttributes($rowDef, (int) $type->team_id, ['plan_type_id' => $type->id, 'plan_id' => null], $order)
+            );
+            $this->syncRowSources($row, $rowDef);
+
+            return $row;
+        });
+    }
+
+    /** Löscht eine Typ-Zeile (soft) samt ihrer Quell-Verweise. Instanz-Zeilen bleiben unberührt. */
+    public function deleteTypeRow(ForecastRow $row): void
+    {
+        DB::transaction(function () use ($row) {
+            ForecastRowSource::where('row_id', $row->id)->delete();
+            $row->delete();
+        });
+    }
+
+    /**
+     * Zeilen DESSELBEN Typs, die auf row_key verweisen (würden beim Löschen brechen): strukturierte
+     * Quellen (selbe Planung), Legacy-config.sources, config.expr [key], quote_basis oder weight_by.
+     *
+     * @return list<array{key:string, label:string, via:string}>
+     */
+    public function typeRowConsumers(ForecastPlanType $type, string $rowKey): array
+    {
+        $out = [];
+        foreach ($type->rows()->with('sources')->get() as $r) {
+            if ($r->key === $rowKey) {
+                continue;
+            }
+            $via = null;
+            foreach ($r->sources as $s) {
+                if ($s->source_plan_id === null && $s->source_row_key === $rowKey) {
+                    $via = 'sources';
+                    break;
+                }
+            }
+            if ($via === null) {
+                foreach ((array) ($r->config['sources'] ?? []) as $ls) {
+                    $lk = is_array($ls) ? ($ls['row_key'] ?? $ls['key'] ?? null) : $ls;
+                    if ($lk === $rowKey) {
+                        $via = 'sources';
+                        break;
+                    }
+                }
+            }
+            if ($via === null) {
+                $expr = (string) ($r->config['expr'] ?? '');
+                if ($expr !== '' && str_contains($expr, '['.$rowKey.']')) {
+                    $via = 'expr';
+                }
+            }
+            if ($via === null && (($r->config['quote_basis'] ?? null) === $rowKey)) {
+                $via = 'quote_basis';
+            }
+            if ($via === null && (($r->config['weight_by'] ?? null) === $rowKey)) {
+                $via = 'weight_by';
+            }
+            if ($via !== null) {
+                $out[] = ['key' => (string) $r->key, 'label' => (string) $r->label, 'via' => $via];
+            }
+        }
+
+        return $out;
+    }
+
     /** Erzeugt einen benannten Snapshot des aktuellen Stands (keine neue Version). */
     public function createSnapshot(ForecastPlan $plan, string $name, ?int $userId = null, ?string $note = null): ForecastSnapshot
     {

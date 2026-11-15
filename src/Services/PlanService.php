@@ -3,6 +3,8 @@
 namespace Platform\Forecast\Services;
 
 use Illuminate\Support\Facades\DB;
+use Platform\Forecast\Enums\Direction;
+use Platform\Forecast\Enums\RowKind;
 use Platform\Forecast\Enums\TimeLevel;
 use Platform\Forecast\Models\ForecastChange;
 use Platform\Forecast\Models\ForecastEntry;
@@ -524,27 +526,160 @@ final class PlanService
         $sources = $r['config']['sources'] ?? $r['sources'] ?? [];
         $i = 0;
         foreach ($sources as $src) {
-            if (is_array($src)) {
-                // Quell-Plan per id ODER uuid (MCP-freundlich)
-                $planId = $src['plan_id'] ?? null;
-                if ($planId === null && ! empty($src['plan_uuid'])) {
-                    $planId = ForecastPlan::where('uuid', $src['plan_uuid'])->value('id');
+            $attrs = $this->normalizeRowSource($src, $i);
+            if ($attrs === null) {
+                continue;
+            }
+            ForecastRowSource::create(['row_id' => $row->id] + $attrs);
+            $i++;
+        }
+    }
+
+    /**
+     * Normalisiert eine Quell-Angabe zu Row-Source-Attributen (ohne row_id). String = selbe
+     * Planung (nur row_key). Array {row_key|key, plan_id?|plan_uuid?, weight?} = Verweis; Quell-Plan
+     * per id ODER uuid (MCP-freundlich). Leerer row_key → null (überspringen).
+     *
+     * @return array{source_plan_id: ?int, source_row_key: string, weight: float, sort_order: int}|null
+     */
+    private function normalizeRowSource(mixed $src, int $sortOrder): ?array
+    {
+        if (is_array($src)) {
+            $planId = $src['plan_id'] ?? null;
+            if ($planId === null && ! empty($src['plan_uuid'])) {
+                $planId = ForecastPlan::where('uuid', $src['plan_uuid'])->value('id');
+            }
+            $rowKey = trim((string) ($src['row_key'] ?? $src['key'] ?? ''));
+            $weight = array_key_exists('weight', $src) ? (float) $src['weight'] : 1.0;
+        } else {
+            $planId = null;
+            $rowKey = trim((string) $src);
+            $weight = 1.0;
+        }
+        if ($rowKey === '') {
+            return null;
+        }
+
+        return [
+            'source_plan_id' => $planId !== null ? (int) $planId : null,
+            'source_row_key' => $rowKey,
+            'weight' => $weight,
+            'sort_order' => $sortOrder,
+        ];
+    }
+
+    /**
+     * Die Quell-Zeilen (Verweise) einer Zeile — für Anzeige/MCP. Cross-Plan-Quellen werden mit
+     * uuid + Name des Quell-Plans angereichert; source_plan_id null = Quelle in derselben Planung.
+     *
+     * @return list<array{id:int, source_plan_id:?int, source_plan_uuid:?string, source_plan_name:?string, row_key:string, weight:float, sort_order:int}>
+     */
+    public function getRowSources(ForecastRow $row): array
+    {
+        $plans = [];
+
+        return $row->sources()->get()->map(function ($s) use (&$plans) {
+            $spid = $s->source_plan_id !== null ? (int) $s->source_plan_id : null;
+            $p = $spid !== null ? ($plans[$spid] ??= ForecastPlan::find($spid)) : null;
+
+            return [
+                'id' => (int) $s->id,
+                'source_plan_id' => $spid,
+                'source_plan_uuid' => $p?->uuid,
+                'source_plan_name' => $p?->name,
+                'row_key' => (string) $s->source_row_key,
+                'weight' => (float) $s->weight,
+                'sort_order' => (int) $s->sort_order,
+            ];
+        })->all();
+    }
+
+    /**
+     * Ersetzt die Quell-Zeilen einer Zeile VOLLSTÄNDIG durch die übergebene Liste (leere Liste =
+     * alle Verweise entfernen). Jede Quelle: String (selbe Planung) ODER {row_key|key, plan_uuid?|plan_id?, weight?}.
+     * Strukturelle Änderung — kein Versions-Bump (wie updateTypeRow); die Reconciliation sieht die
+     * neuen Quellen beim nächsten Rechnen.
+     *
+     * @param  list<array|string>  $items
+     * @return list<array{source_plan_id:?int, source_plan_uuid:?string, row_key:string, weight:float, sort_order:int}>
+     */
+    public function replaceRowSources(ForecastRow $row, array $items): array
+    {
+        return DB::transaction(function () use ($row, $items) {
+            ForecastRowSource::where('row_id', $row->id)->delete();
+
+            $i = 0;
+            $out = [];
+            foreach (array_values($items) as $src) {
+                $attrs = $this->normalizeRowSource($src, $i);
+                if ($attrs === null) {
+                    continue;
                 }
+                ForecastRowSource::create(['row_id' => $row->id] + $attrs);
+                $uuid = $attrs['source_plan_id'] !== null
+                    ? ForecastPlan::where('id', $attrs['source_plan_id'])->value('uuid')
+                    : null;
+                $out[] = [
+                    'source_plan_id' => $attrs['source_plan_id'],
+                    'source_plan_uuid' => $uuid,
+                    'row_key' => $attrs['source_row_key'],
+                    'weight' => $attrs['weight'],
+                    'sort_order' => $attrs['sort_order'],
+                ];
+                $i++;
+            }
+
+            return $out;
+        });
+    }
+
+    /**
+     * Liefert die Instanz-Zeile eines Plans für row_key. Existiert nur die (geteilte) Typ-Zeile,
+     * wird ein Instanz-Override erzeugt — ein Klon der Typ-Zeile mit plan_id gesetzt, inkl. der bisher
+     * geerbten Quellen. So bleiben Verweise pro Instanz getrennt (Instanz gewinnt in resolvedRows).
+     * null, wenn der Key weder als Instanz- noch als Typ-Zeile existiert.
+     */
+    public function materializeInstanceRow(ForecastPlan $plan, string $rowKey): ?ForecastRow
+    {
+        $instance = ForecastRow::where('plan_id', $plan->id)->where('key', $rowKey)->first();
+        if ($instance) {
+            return $instance;
+        }
+
+        $typeRow = $plan->plan_type_id
+            ? ForecastRow::where('plan_type_id', $plan->plan_type_id)->where('key', $rowKey)->first()
+            : null;
+        if (! $typeRow) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($plan, $typeRow) {
+            $clone = ForecastRow::create([
+                'team_id' => $plan->team_id,
+                'plan_type_id' => null,
+                'plan_id' => $plan->id,
+                'key' => $typeRow->key,
+                'label' => $typeRow->label,
+                'kind' => $typeRow->kind instanceof RowKind ? $typeRow->kind->value : $typeRow->kind,
+                'agg' => $typeRow->agg,
+                'unit_id' => $typeRow->unit_id,
+                'direction' => $typeRow->direction instanceof Direction ? $typeRow->direction->value : $typeRow->direction,
+                'config' => $typeRow->config,
+                'order' => $typeRow->order,
+            ]);
+
+            foreach ($typeRow->sources as $s) {
                 ForecastRowSource::create([
-                    'row_id' => $row->id,
-                    'source_plan_id' => $planId,
-                    'source_row_key' => $src['row_key'] ?? $src['key'] ?? '',
-                    'weight' => $src['weight'] ?? 1,
-                    'sort_order' => $i++,
-                ]);
-            } else {
-                ForecastRowSource::create([
-                    'row_id' => $row->id,
-                    'source_row_key' => (string) $src,
-                    'sort_order' => $i++,
+                    'row_id' => $clone->id,
+                    'source_plan_id' => $s->source_plan_id,
+                    'source_row_key' => $s->source_row_key,
+                    'weight' => $s->weight,
+                    'sort_order' => $s->sort_order,
                 ]);
             }
-        }
+
+            return $clone;
+        });
     }
 
     private function recordChange(ForecastPlan $plan, ?int $userId, string $op, array $data): ForecastChange

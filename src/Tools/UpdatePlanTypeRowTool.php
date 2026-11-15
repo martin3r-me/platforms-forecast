@@ -24,7 +24,8 @@ class UpdatePlanTypeRowTool implements ToolContract, ToolMetadataContract
     {
         return 'PUT /plan-types/{plan_type}/rows/{row_key} – Aktualisiert Stammdaten EINER Vorlagen-Zeile '
             .'eines Planungs-Typs: label, direction (income|expense|neutral), unit (Code), order. '
-            .'KEIN Update von kind/agg/sources möglich (strukturelle Änderung — dafür Zeile löschen+neu anlegen). '
+            .'KEIN Update von kind/agg hier (strukturelle Änderung — dafür Zeile löschen+neu anlegen). '
+            .'Quell-Zeilen (sources/Verweise) ändern: forecast.row.sources.PUT. '
             .'Wirkt sofort auf alle Plan-Instanzen dieses Typs, da sie row_key referenzieren. '
             .'Parameter: plan_type (uuid oder key, required), row_key (required), mindestens ein weiteres Feld.';
     }

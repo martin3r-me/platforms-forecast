@@ -25,7 +25,11 @@ class CreatePlanTypeTool implements ToolContract, ToolMetadataContract
             .'Jede Zeile: {key, label, kind[input|formula], unit (Code z.B. EUR/H/FTE/PCS/PCT), '
             .'direction[income|expense|neutral], config, order}. '
             .'Formula-Zeilen (read-only, aggregieren andere Zeilen) brauchen config: '
-            .'{agg: sum|net|avg|median|min|max|count|product|cumulative, sources: [rowKey, ...]}. '
+            .'{agg: sum|net|avg|median|min|max|count|product|cumulative, sources: [...]}. '
+            .'sources-Einträge: "rowKey" (String = Zeile DERSELBEN Planung) ODER '
+            .'{row_key, plan_uuid, weight?} für einen CROSS-PLAN-Verweis auf eine Zeile einer ANDEREN '
+            .'Planung (Konsolidierung/Drill-down, Zeile→Zeile bucket-gleich). Verweise nachträglich '
+            .'ändern: forecast.row.sources.PUT. '
             .'"net" = vorzeichenbehaftete Summe (income − expense). '
             .'"cumulative" = Fortschreibung/Roll-Forward: laufende Summe der signierten Quellen über die Zeit '
             .'(Schluss[t]=Schluss[t-1]+Netto[t]) — für Bestände wie Liquidität/Cash; Anfangsbestand = +Quelle am Start. '
@@ -57,6 +61,7 @@ class CreatePlanTypeTool implements ToolContract, ToolMetadataContract
                                 .'Bei Ausdruck-Zeilen (config.expr): flow/avg/stock rechnen NUR auf der feinsten Ebene und rollen hoch (z. B. Staffel-Provision: Jahr = Σ der Monats-Provisionen). recompute = Ausdruck auf JEDER Ebene neu rechnen — richtig für Quoten/Margen (Jahres-Marge = Jahr-DB ÷ Jahr-Umsatz).'],
                             'weight_by' => ['type' => 'string', 'description' => 'Nur bei time_agg=wavg: row_key der Gewichts-Zeile (z. B. "menge"), nach der über die Zeit gemittelt wird.'],
                             'config' => ['type' => 'object', 'description' => 'Bei formula ENTWEDER {agg, sources} ODER {expr}. '
+                                .'sources: Liste aus "rowKey" (selbe Planung) oder {row_key, plan_uuid, weight?} (Cross-Plan-Verweis auf eine andere Planung; nachträglich via forecast.row.sources.PUT). '
                                 .'expr = freie Ausdruck-Formel je Bucket, Referenzen auf andere Zeilen als [row.key]: '
                                 .'z. B. "[preis] * [menge] - [rabatt]" oder "IF([umsatz] > 100000, [umsatz]*0.1, [umsatz]*0.05)". '
                                 .'Operatoren + - * / % > < >= <= == != && || ! und ?: · Funktionen IF, MIN, MAX, SUM, ABS, ROUND, FLOOR, CEIL, CLAMP. '

@@ -42,7 +42,9 @@ class CreatePlanTool implements ToolContract, ToolMetadataContract
                 'distribution_policy' => ['type' => 'string', 'description' => 'Verteilungsschlüssel (uuid oder key), z. B. "seasonal" für saisonale Abwärts-Verteilung. Ohne Angabe greift der Default (gleichmäßig).'],
                 'rows' => [
                     'type' => 'array',
-                    'description' => 'Zusätzliche Instanz-Zeilen (ergänzen den Typ).',
+                    'description' => 'Zusätzliche Instanz-Zeilen (ergänzen den Typ). Formel-Zeilen können '
+                        .'config.sources tragen: "rowKey" (selbe Planung) oder {row_key, plan_uuid, weight?} '
+                        .'(Cross-Plan-Verweis). Verweise nachträglich pflegen: forecast.row.sources.PUT.',
                     'items' => ['type' => 'object'],
                 ],
             ],

@@ -1013,13 +1013,33 @@
                     else if (t.right > s.right - pad) sc.scrollLeft += (t.right - (s.right - pad));
                 },
                 move(dr, dc, extend) { if (this.active) this.select(this.active.r + dr, this.active.c + dc, extend); },
+                // Nächste EDITIERBARE Zelle in Lese-Reihenfolge (zeilenweise, links→rechts). Read-only
+                // Zellen (Formeln/Summen) werden übersprungen; am Zeilenende geht es in der nächsten
+                // Zeile weiter. dir = +1 (Tab) / -1 (Shift+Tab). null am Grid-Rand (kein Sprung).
+                nextEditable(dir) {
+                    if (! this.active) return null;
+                    const d = this.dims();
+                    let r = this.active.r, c = this.active.c;
+                    const total = (d.mr + 1) * (d.mc + 1) + 2; // Sicherheits-Obergrenze
+                    for (let i = 0; i < total; i++) {
+                        c += dir;
+                        if (c > d.mc) { c = 0; r++; }
+                        else if (c < 0) { c = d.mc; r--; }
+                        if (r < 0 || r > d.mr) return null;
+                        const td = this.cell(r, c);
+                        if (td && td.dataset.fcEdit === '1') return { r, c };
+                    }
+                    return null;
+                },
+                // Tab-Sprung ins nächste Eingabefeld (überspringt read-only Zellen, Zeilenumbruch).
+                tabTo(dir) { const n = this.nextEditable(dir); if (n) this.select(n.r, n.c, false); },
                 ensureEditor() {
                     if (this.editor) return this.editor;
                     const ed = document.createElement('input');
                     ed.type = 'text'; ed.inputMode = 'decimal'; ed.className = 'fc-editor';
                     ed.addEventListener('keydown', (e) => {
                         if (e.key === 'Enter') { e.preventDefault(); this.commitEdit(); this.move(e.shiftKey ? -1 : 1, 0, false); }
-                        else if (e.key === 'Tab') { e.preventDefault(); this.commitEdit(); this.move(0, e.shiftKey ? -1 : 1, false); }
+                        else if (e.key === 'Tab') { e.preventDefault(); this.commitEdit(); this.tabTo(e.shiftKey ? -1 : 1); }
                         else if (e.key === 'Escape') { e.preventDefault(); this.cancelEdit(); }
                         e.stopPropagation();
                     });
@@ -1310,6 +1330,7 @@
                 else if (k === 'ArrowDown') { e.preventDefault(); G.move(1, 0, e.shiftKey); }
                 else if (k === 'ArrowLeft') { e.preventDefault(); G.move(0, -1, e.shiftKey); }
                 else if (k === 'ArrowRight') { e.preventDefault(); G.move(0, 1, e.shiftKey); }
+                else if (k === 'Tab') { e.preventDefault(); G.tabTo(e.shiftKey ? -1 : 1); }
                 else if (k === 'Enter' || k === 'F2') { e.preventDefault(); G.startEdit(null); }
                 else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); G.clearSel(); }
                 else if (k.length === 1 && /[-0-9.,+*/%]/.test(k)) { e.preventDefault(); G.startEdit(k); }

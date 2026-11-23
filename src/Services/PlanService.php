@@ -421,6 +421,17 @@ final class PlanService
         if (array_key_exists('order', $attrs) && $attrs['order'] !== null) {
             $row->order = (int) $attrs['order'];
         }
+        if (array_key_exists('time_agg', $attrs) && $attrs['time_agg'] !== null
+            && in_array($attrs['time_agg'], ['flow', 'stock', 'stock_open', 'avg', 'recompute', 'wavg'], true)) {
+            // In bestehende config mergen — sources/expr/section/quote_basis bleiben erhalten.
+            $config = (array) ($row->config ?? []);
+            if ($attrs['time_agg'] === 'flow') {
+                unset($config['time_agg']); // flow = Default, Schlüssel sparen
+            } else {
+                $config['time_agg'] = (string) $attrs['time_agg'];
+            }
+            $row->config = $config === [] ? null : $config;
+        }
         $row->save();
 
         return $row;

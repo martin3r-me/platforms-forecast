@@ -23,7 +23,12 @@ class UpdatePlanTypeRowTool implements ToolContract, ToolMetadataContract
     public function getDescription(): string
     {
         return 'PUT /plan-types/{plan_type}/rows/{row_key} – Aktualisiert Stammdaten EINER Vorlagen-Zeile '
-            .'eines Planungs-Typs: label, direction (income|expense|neutral), unit (Code), order. '
+            .'eines Planungs-Typs: label, direction (income|expense|neutral), unit (Code), order, time_agg. '
+            .'time_agg = Zeit-Aggregation (Monate→Jahr): flow (Default, Stromgröße = Summe), '
+            .'avg (Bestandsgröße = Ø über die Zeit, z. B. VZÄ/Köpfe/Auslastung), stock/stock_open '
+            .'(Bestand = letzter/erster Teilzeitraum), recompute (Quote/Marge je Ebene neu rechnen), '
+            .'wavg (gewichtetes Mittel, braucht weight_by). Die Ordner-Konsolidierung (Summe der Blätter) '
+            .'bleibt unberührt — time_agg wirkt nur auf die Zeitachse. '
             .'KEIN Update von kind/agg hier (strukturelle Änderung — dafür Zeile löschen+neu anlegen). '
             .'Quell-Zeilen (sources/Verweise) ändern: forecast.row.sources.PUT. '
             .'Wirkt sofort auf alle Plan-Instanzen dieses Typs, da sie row_key referenzieren. '
@@ -41,6 +46,7 @@ class UpdatePlanTypeRowTool implements ToolContract, ToolMetadataContract
                 'direction' => ['type' => 'string', 'enum' => ['income', 'expense', 'neutral']],
                 'unit' => ['type' => 'string', 'description' => 'Einheit-Code, z. B. EUR, PCS, FTE.'],
                 'order' => ['type' => 'integer'],
+                'time_agg' => ['type' => 'string', 'enum' => ['flow', 'stock', 'stock_open', 'avg', 'recompute', 'wavg'], 'description' => 'Zeit-Aggregation Monate→Jahr. flow=Summe (Default), avg=Ø (Bestandsgrößen wie VZÄ), stock/stock_open=letzter/erster Teilzeitraum, recompute=Quote je Ebene neu, wavg=gewichtetes Mittel (weight_by nötig).'],
             ],
             'required' => ['plan_type', 'row_key'],
         ];
@@ -66,18 +72,25 @@ class UpdatePlanTypeRowTool implements ToolContract, ToolMetadataContract
             }
 
             if (! array_key_exists('label', $arguments) && ! array_key_exists('direction', $arguments)
-                && ! array_key_exists('unit', $arguments) && ! array_key_exists('order', $arguments)) {
-                return ToolResult::error('Mindestens ein Feld (label/direction/unit/order) angeben.', 'VALIDATION_ERROR');
+                && ! array_key_exists('unit', $arguments) && ! array_key_exists('order', $arguments)
+                && ! array_key_exists('time_agg', $arguments)) {
+                return ToolResult::error('Mindestens ein Feld (label/direction/unit/order/time_agg) angeben.', 'VALIDATION_ERROR');
             }
 
             if (array_key_exists('direction', $arguments) && ! in_array($arguments['direction'], ['income', 'expense', 'neutral'], true)) {
                 return ToolResult::error('direction muss income, expense oder neutral sein.', 'VALIDATION_ERROR');
             }
 
+            if (array_key_exists('time_agg', $arguments)
+                && ! in_array($arguments['time_agg'], ['flow', 'stock', 'stock_open', 'avg', 'recompute', 'wavg'], true)) {
+                return ToolResult::error('time_agg muss flow, stock, stock_open, avg, recompute oder wavg sein.', 'VALIDATION_ERROR');
+            }
+
             $attrs = [
                 'label' => $arguments['label'] ?? null,
                 'direction' => isset($arguments['direction']) ? Direction::from($arguments['direction']) : null,
                 'order' => $arguments['order'] ?? null,
+                'time_agg' => $arguments['time_agg'] ?? null,
             ];
 
             if (array_key_exists('unit', $arguments)) {
@@ -97,6 +110,7 @@ class UpdatePlanTypeRowTool implements ToolContract, ToolMetadataContract
                 'direction' => $row->direction?->value,
                 'unit_id' => $row->unit_id,
                 'order' => $row->order,
+                'time_agg' => $row->config['time_agg'] ?? 'flow',
             ]);
         } catch (\Throwable $e) {
             return ToolResult::error('Fehler beim Aktualisieren der Zeile: '.$e->getMessage(), 'EXECUTION_ERROR');

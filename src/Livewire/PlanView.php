@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Platform\Forecast\Enums\RowKind;
 use Platform\Forecast\Enums\TimeLevel;
+use Platform\Forecast\Models\ForecastComment;
 use Platform\Forecast\Models\ForecastDistributionPolicy;
 use Platform\Forecast\Models\ForecastEntry;
 use Platform\Forecast\Models\ForecastLockPolicy;
@@ -17,6 +18,7 @@ use Platform\Forecast\Reconciliation\Mode;
 use Platform\Forecast\Reconciliation\TimeAxis;
 use Platform\Forecast\Services\Aggregation;
 use Platform\Forecast\Services\CellEditability;
+use Platform\Forecast\Services\CommentService;
 use Platform\Forecast\Services\LockService;
 use Platform\Forecast\Services\PlanReconciler;
 use Platform\Forecast\Services\PlanService;
@@ -85,6 +87,24 @@ class PlanView extends Component
 
     /** @var list<array{label:string, value:string}> */
     public array $breakdownItems = [];
+
+    /* ── Kommentare (Threads an Zelle/Zeile) ──────────────────────────────────────────────
+     *  Anker = (commentRow, commentBucket): commentBucket = null → Kommentar an der ganzen
+     *  Zeile, sonst an genau einer Zelle. commentThread hält den aktuell geöffneten Verlauf. */
+    public bool $commentsOpen = false;
+
+    public ?string $commentRow = null;
+
+    public ?string $commentBucket = null;
+
+    public ?string $commentRowLabel = null;
+
+    public ?string $commentBucketLabel = null;
+
+    /** @var list<array<string, mixed>> */
+    public array $commentThread = [];
+
+    public string $commentDraft = '';
 
     public function mount(string $uuid): void
     {
@@ -327,6 +347,65 @@ class PlanView extends Component
         } catch (\Throwable $e) {
             $this->cellError = 'Konnte die Aufschlüsselung nicht auflösen.';
         }
+    }
+
+    /* ── Kommentare ───────────────────────────────────────────────────────────────────────
+     *  Öffnet den Thread an einer Zelle (bucket gesetzt) oder an der ganzen Zeile (bucket leer/
+     *  null). Keine Editier-Prüfung: kommentieren darf man auch read-only/berechnete Zeilen. */
+    public function openComments(string $rowKey, ?string $bucket = null): void
+    {
+        $plan = $this->plan();
+        $meta = $this->rowMeta($plan, $rowKey);
+        $bucket = ($bucket === '' ? null : $bucket);
+
+        $this->commentRow = $rowKey;
+        $this->commentBucket = $bucket;
+        $this->commentRowLabel = $meta['label'] ?? $rowKey;
+        $this->commentBucketLabel = $bucket; // roher Bucket-Key (z. B. „2027-04") — null = ganze Zeile
+        $this->commentThread = (new CommentService())->thread($plan, $rowKey, $bucket);
+        $this->commentDraft = '';
+        $this->commentsOpen = true;
+    }
+
+    public function addComment(): void
+    {
+        $body = trim($this->commentDraft);
+        if ($this->commentRow === null || $body === '') {
+            return;
+        }
+
+        $plan = $this->plan();
+        (new CommentService())->add($plan, $this->commentRow, $this->commentBucket, $body, (int) Auth::id());
+        $this->commentThread = (new CommentService())->thread($plan, $this->commentRow, $this->commentBucket);
+        $this->commentDraft = '';
+    }
+
+    public function deleteComment(int $id): void
+    {
+        $plan = $this->plan();
+        $comment = ForecastComment::where('team_id', $plan->team_id)
+            ->where('plan_id', $plan->id)
+            ->where('id', $id)
+            ->first();
+
+        // Nur eigene Beiträge löschen.
+        if ($comment && (int) $comment->user_id === (int) Auth::id()) {
+            (new CommentService())->delete($comment);
+            if ($this->commentRow !== null) {
+                $this->commentThread = (new CommentService())->thread($plan, $this->commentRow, $this->commentBucket);
+            }
+        }
+    }
+
+    public function closeComments(): void
+    {
+        $this->commentsOpen = false;
+        $this->commentRow = null;
+        $this->commentBucket = null;
+        $this->commentRowLabel = null;
+        $this->commentBucketLabel = null;
+        $this->commentThread = [];
+        $this->commentDraft = '';
     }
 
     /** Betrag für die Modal-Eingabe formatieren (Faktor in %-Ebene, DE-Dezimalkomma). */
@@ -1146,7 +1225,16 @@ class PlanView extends Component
             }
         }
 
+        // Kommentar-Marker fürs Grid: welche Zeilen/Zellen tragen einen Thread?
+        try {
+            $commentCounts = (new CommentService())->counts($plan);
+        } catch (\Throwable $e) {
+            $commentCounts = ['row' => [], 'cell' => []]; // Tabelle evtl. noch nicht migriert
+        }
+
         return view('forecast::livewire.plan-view', [
+            'commentRowCounts' => $commentCounts['row'] ?? [],
+            'commentCellCounts' => $commentCounts['cell'] ?? [],
             'breakdownCells' => $breakdownCells,
             'breakdownDerivedCells' => $breakdownDerivedCells,
             'parentPlan' => $parentPlan,

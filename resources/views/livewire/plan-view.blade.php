@@ -450,6 +450,13 @@
                                                 </a>
                                             @endif
                                             <span class="fc-meta text-[10px] text-[var(--nx-muted)]/55 whitespace-nowrap ml-0.5">@if($isF){{ $rowInfo[$rowKey]['aggLabel'] }}@else<span class="{{ $dir === 'income' ? 'text-emerald-600/75' : ($dir === 'expense' ? 'text-rose-600/75' : '') }}">{{ $dir === 'income' ? 'Ertrag' : ($dir === 'expense' ? 'Aufwand' : 'Messgröße') }}</span>@endif @if($unitOf($rowKey))· {{ $unitOf($rowKey) }}@endif</span>
+                                            @php $rcN = $commentRowCounts[$rowKey] ?? 0; @endphp
+                                            <button type="button" wire:click.stop="openComments('{{ $rowKey }}')"
+                                                    class="{{ $rcN ? '' : 'fc-meta' }} ml-auto shrink-0 inline-flex items-center gap-0.5 text-[10px] {{ $rcN ? 'text-[var(--nx-accent)]' : 'text-[var(--nx-muted)]/50 hover:text-[var(--nx-muted)]' }}"
+                                                    title="{{ $rcN ? $rcN.' Kommentar(e) an dieser Zeile — öffnen' : 'Kommentar an dieser Zeile hinzufügen' }}">
+                                                @svg('heroicon-o-chat-bubble-left-right','w-3.5 h-3.5')
+                                                @if($rcN)<span class="tabular-nums">{{ $rcN }}</span>@endif
+                                            </button>
                                         </div>
                                     </td>
 
@@ -595,6 +602,14 @@
                                                 <span class="absolute top-1 right-1.5 text-amber-500" title="Nur teilweise Detail auf dieser Ebene — nicht alle Bestandteile sind hier aufgeschlüsselt, die Kennzahl ist unvollständig">
                                                     @svg('heroicon-o-exclamation-triangle','w-3 h-3')
                                                 </span>
+                                            @endif
+                                            @php $ccN = $commentCellCounts[$rowKey][$bkt] ?? 0; @endphp
+                                            @if($ccN)
+                                                <button type="button" wire:click.stop="openComments('{{ $rowKey }}', '{{ $bkt }}')"
+                                                        class="absolute bottom-0.5 right-0.5 inline-flex items-center justify-center text-[var(--nx-accent)] hover:scale-125 transition-transform"
+                                                        title="{{ $ccN }} Kommentar(e) an dieser Zelle — öffnen">
+                                                    <span class="block w-[7px] h-[7px] rounded-full bg-[var(--nx-accent)] ring-1 ring-[var(--nx-surface)]"></span>
+                                                </button>
                                             @endif
                                             {{-- Aufschlüsseln wird per Rechtsklick-Menü/Doppelklick ausgelöst (kein Hover-Icon mehr). --}}
                                             @if($cellFromBreakdown)
@@ -1300,14 +1315,14 @@
                 const canBreak = td.dataset.fcCanbreak === '1';
                 const editable = td.dataset.fcEdit === '1';
                 const derived = td.dataset.fcDerived === '1';
-                if (! broken && ! canBreak && ! editable && ! derived) return; // kein Grid-Kontext → natives Menü
                 e.preventDefault();
                 G.select(+td.dataset.fcR, +td.dataset.fcC, false);
                 const row = td.dataset.fcRow, bkt = td.dataset.fcCol, W = window.__fcWire;
                 if (! W) return;
-                if (derived) { fcMenu.open(e.clientX, e.clientY, [{ info: true, label: 'Aus Aufschlüsselung verteilt — eine Ebene höher bearbeiten' }]); return; }
                 const items = [];
-                if (broken) {
+                if (derived) {
+                    items.push({ info: true, label: 'Aus Aufschlüsselung verteilt — eine Ebene höher bearbeiten' });
+                } else if (broken) {
                     items.push({ label: 'Aufschlüsselung bearbeiten …', fn: () => W.openBreakdown(row, bkt) });
                     items.push({ label: 'Auflösen → Direktwert', fn: () => W.dissolveBreakdown(row, bkt) });
                 } else if (canBreak) {
@@ -1317,7 +1332,10 @@
                     items.push({ sep: true });
                     items.push({ label: 'Zelle leeren', danger: true, fn: () => W.saveCell(row, bkt, '') });
                 }
-                if (items.length) fcMenu.open(e.clientX, e.clientY, items);
+                // Kommentare an JEDER Zelle möglich — auch an berechneten/abgeleiteten.
+                if (items.length) items.push({ sep: true });
+                items.push({ label: 'Kommentar / Verlauf …', fn: () => W.openComments(row, bkt) });
+                fcMenu.open(e.clientX, e.clientY, items);
             }, true);
 
             // Tastatur (nur wenn eine Grid-Zelle aktiv ist, nicht editiert wird und kein Feld fokussiert ist).
@@ -1425,6 +1443,61 @@
                 <div class="mt-4 flex items-center justify-end gap-2">
                     <button type="button" wire:click="closeBreakdown" class="px-3 py-1.5 text-[13px] rounded-lg text-[var(--nx-muted)] hover:bg-[var(--nx-hover)] transition-colors">Abbrechen</button>
                     <button type="button" wire:click="saveBreakdown" wire:loading.attr="disabled" class="px-3.5 py-1.5 text-[13px] font-medium rounded-lg bg-[var(--nx-accent)] text-white hover:opacity-90 transition-opacity">Speichern</button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ═══ Kommentare ═══ Thread (Verlauf) an einer Zelle (bucket) oder einer ganzen Zeile
+         (bucket = null). Reine Annotation — keine neue Plan-Version, keine Konsolidierung. --}}
+    @if($commentsOpen)
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" wire:key="comments-modal">
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-[1px]" wire:click="closeComments"></div>
+            <div class="relative w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl bg-[var(--nx-surface)] border border-[var(--nx-line)] shadow-2xl shadow-black/20"
+                 @keydown.escape.window="$wire.closeComments()">
+                {{-- Kopf: Anker (Zeile + Zelle/ganze Zeile) --}}
+                <div class="flex items-start justify-between gap-3 p-5 pb-3 border-b border-[var(--nx-line)]/60">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5 text-[var(--nx-text)]">
+                            @svg('heroicon-o-chat-bubble-left-right','w-4 h-4 text-[var(--nx-accent)]')
+                            <span class="font-semibold truncate">{{ $commentRowLabel }}</span>
+                        </div>
+                        <div class="mt-0.5 text-[12px] text-[var(--nx-muted)]">{{ $commentBucketLabel ? 'Zelle · '.$commentBucketLabel : 'Ganze Zeile' }}</div>
+                    </div>
+                    <button type="button" wire:click="closeComments" class="shrink-0 text-[var(--nx-muted)] hover:text-[var(--nx-text)] transition-colors" title="Schließen">
+                        @svg('heroicon-o-x-mark','w-5 h-5')
+                    </button>
+                </div>
+                {{-- Verlauf --}}
+                <div class="flex-1 overflow-auto px-5 py-3 space-y-3 min-h-[80px]">
+                    @forelse($commentThread as $c)
+                        <div class="group/cmt" wire:key="cmt-{{ $c['id'] }}">
+                            <div class="flex items-center gap-2 text-[11px] text-[var(--nx-muted)]">
+                                <span class="font-medium text-[var(--nx-text)]/80">{{ $c['user_name'] }}</span>
+                                <span title="{{ $c['created_label'] }}">{{ $c['created_human'] }}</span>
+                                @if(($c['user_id'] ?? null) === auth()->id())
+                                    <button type="button" wire:click="deleteComment({{ $c['id'] }})"
+                                            class="opacity-0 group-hover/cmt:opacity-100 ml-auto text-rose-500/70 hover:text-rose-500 transition-opacity" title="Löschen">
+                                        @svg('heroicon-o-trash','w-3.5 h-3.5')
+                                    </button>
+                                @endif
+                            </div>
+                            <div class="mt-0.5 text-[13px] text-[var(--nx-text)] whitespace-pre-wrap break-words">{{ $c['body'] }}</div>
+                        </div>
+                    @empty
+                        <div class="py-6 text-center text-[13px] text-[var(--nx-muted)]">Noch keine Kommentare — schreib den ersten.</div>
+                    @endforelse
+                </div>
+                {{-- Eingabe --}}
+                <div class="p-4 border-t border-[var(--nx-line)]/60">
+                    <textarea wire:model="commentDraft" rows="2" placeholder="Kommentar schreiben … (Strg/⌘ + Enter zum Senden)"
+                              @keydown.enter.meta.prevent="$wire.addComment()" @keydown.enter.ctrl.prevent="$wire.addComment()"
+                              class="w-full px-3 py-2 text-[13px] rounded-lg bg-[var(--nx-hover)]/50 border border-[var(--nx-line)] focus:border-[var(--nx-accent)] focus:outline-none text-[var(--nx-text)] placeholder:text-[var(--nx-muted)]/50 resize-none"></textarea>
+                    <div class="mt-2 flex items-center justify-end gap-2">
+                        <button type="button" wire:click="closeComments" class="px-3 py-1.5 text-[13px] rounded-lg text-[var(--nx-muted)] hover:bg-[var(--nx-hover)] transition-colors">Schließen</button>
+                        <button type="button" wire:click="addComment" wire:loading.attr="disabled"
+                                class="px-3.5 py-1.5 text-[13px] font-medium rounded-lg bg-[var(--nx-accent)] text-white hover:opacity-90 transition-opacity">Kommentieren</button>
+                    </div>
                 </div>
             </div>
         </div>
